@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+.env
+
+# AI File Organizer Specific
+file_organizer_log.json
+test_files/
+files/
+github/
+local/
+
+# AI Models & Cache
+*.pth
+*.pkl
+*.model
+.cache/
+models/
+checkpoints/
+
+# Ollama
+.ollama/
+
+# PyTorch
+lightning_logs/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# Large files (for testing)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.iso
+*.dmg
+
+# Backup files
+*.bak
+*.backup
+*~ 
+
+# README.md 
+README.md
