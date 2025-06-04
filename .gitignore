@@ -27,11 +27,10 @@ MANIFEST
 .env
 
 # AI File Organizer Specific
-file_organizer_log.json
+logs/
 test_files/
-files/
-github/
-local/
+unstructed_files/
+organized_files/
 
 # AI Models & Cache
 *.pth
@@ -70,7 +69,6 @@ desktop.ini
 
 # Logs
 *.log
-logs/
 
 # Temporary files
 *.tmp
@@ -88,7 +86,7 @@ logs/
 # Backup files
 *.bak
 *.backup
-*~ 
+*~
 
 # README.md 
 README.md

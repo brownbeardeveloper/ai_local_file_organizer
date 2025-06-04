@@ -14,7 +14,9 @@ import hashlib
 class FileMover:
     def __init__(self):
         self.move_log = []
-        self.log_file = Path("file_organizer_log.json")
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        self.log_file = logs_dir / "file_organizer.json"
         self._load_log()
 
     def move(self, source: Path, destination: Path) -> bool:

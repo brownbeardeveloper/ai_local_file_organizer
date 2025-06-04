@@ -41,20 +41,19 @@ class PathSuggester:
 
     def _is_already_organized(self, path: Path) -> bool:
         """Check if file is already in an organized location"""
-        path_str = str(path)
-        organized_paths = ["files/", "github/", "local/code/"]
-        return any(org_path in path_str for org_path in organized_paths)
+        # Check if any parent directory is one of our organized directories
+        path_parts = path.parts
+        organized_dirs = {"unstructed_files", "organized_files"}
+
+        is_organized = any(part in organized_dirs for part in path_parts)
+        return is_organized
 
     def _suggest_project_path(self, file_info: Dict, analysis: Dict) -> Path:
         """Suggest path for project directories"""
         project_name = file_info["path"].name
 
-        if analysis.get("is_git"):
-            # Git projects go to /github/{project_name}
-            return self.root_path / "github" / project_name
-        else:
-            # Non-git projects go to /local/code/{project_name}
-            return self.root_path / "local" / "code" / project_name
+        # All projects go under organized_files/projects/
+        return self.data_path / "projects" / project_name
 
     def _suggest_large_file_path(self, file_info: Dict, analysis: Dict) -> Path:
         """Suggest path for large files"""

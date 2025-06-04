@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI-Powered File Organizer
-Intelligently organizes files using local LLM and computer vision
+AI-Powered File Organizer Library
+Core functionality for intelligently organizing files using local LLM and computer vision
 """
 
 import os
@@ -10,21 +10,18 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
-import click
-from rich.console import Console
-from rich.table import Table
-from rich.tree import Tree
-from rich.prompt import Confirm
 
 from scanner import FileScanner
 from analyzer import FileAnalyzer
 from suggester import PathSuggester
 from mover import FileMover
 
-console = Console()
-
 
 class FileOrganizer:
+    """
+    Main file organizer class that coordinates scanning, analysis, and moving of files.
+    """
+
     def __init__(self, root_path: Path, data_path: Path):
         self.root_path = root_path
         self.data_path = data_path
@@ -56,47 +53,37 @@ class FileOrganizer:
 
     def organize(self, dry_run: bool = True):
         """Main organization workflow"""
-        console.print("\n🔍 [bold cyan]Scanning files...[/bold cyan]")
+        print("\n🔍 Scanning files...")
         files_to_organize = self.scanner.scan()
 
         if not files_to_organize:
-            console.print("[yellow]No files found to organize![/yellow]")
+            print("No files found to organize!")
             return
 
-        console.print(
-            f"[green]Found {len(files_to_organize)} items to analyze[/green]\n"
-        )
+        print(f"Found {len(files_to_organize)} items to analyze\n")
 
         # Analyze files and get suggestions
-        console.print(
-            "🧠 [bold cyan]Analyzing files and generating suggestions...[/bold cyan]"
-        )
+        print("🧠 Analyzing files and generating suggestions...")
         move_plan = []
 
-        with console.status("[bold green]Processing files...") as status:
-            for i, file_info in enumerate(files_to_organize):
-                status.update(
-                    f"Processing {i + 1}/{len(files_to_organize)}: {file_info['path'].name}"
+        for i, file_info in enumerate(files_to_organize):
+            print(f"Processing {i + 1}/{len(files_to_organize)}: {file_info['path'].name}")
+            # Analyze file
+            analysis = self.analyzer.analyze(file_info)
+            # Get suggested path
+            suggested_path = self.suggester.suggest_path(file_info, analysis)
+            if suggested_path and suggested_path != file_info["path"]:
+                move_plan.append(
+                    {
+                        "source": file_info["path"],
+                        "destination": suggested_path,
+                        "type": file_info["type"],
+                        "analysis": analysis,
+                    }
                 )
 
-                # Analyze file
-                analysis = self.analyzer.analyze(file_info)
-
-                # Get suggested path
-                suggested_path = self.suggester.suggest_path(file_info, analysis)
-
-                if suggested_path and suggested_path != file_info["path"]:
-                    move_plan.append(
-                        {
-                            "source": file_info["path"],
-                            "destination": suggested_path,
-                            "type": file_info["type"],
-                            "analysis": analysis,
-                        }
-                    )
-
         if not move_plan:
-            console.print("[yellow]No reorganization needed![/yellow]")
+            print("No reorganization needed!")
             return
 
         # Display the plan
@@ -104,18 +91,16 @@ class FileOrganizer:
 
         # Ask for confirmation
         if not dry_run:
-            if Confirm.ask("\n[bold]Execute this organization plan?[/bold]"):
+            if input("\nExecute this organization plan? (y/n): ").lower() == 'y':
                 self._execute_plan(move_plan)
             else:
-                console.print("[red]Organization cancelled[/red]")
+                print("Organization cancelled")
         else:
-            console.print(
-                "\n[yellow]Dry run complete. Use --execute to perform the moves[/yellow]"
-            )
+            print("\nDry run complete. Use --execute to perform the moves")
 
     def _display_plan(self, move_plan: List[Dict]):
         """Display the organization plan in a nice format"""
-        console.print("\n📋 [bold cyan]Organization Plan:[/bold cyan]\n")
+        print("\n📋 Organization Plan:\n")
 
         # Group by destination type
         grouped = {}
@@ -125,31 +110,23 @@ class FileOrganizer:
                 grouped[dest_type] = []
             grouped[dest_type].append(item)
 
-        # Create a tree view
-        tree = Tree("📁 Organization Structure")
-
+        # Print a simple tree-like structure
+        print("Organization Structure:")
         for dest_type, items in grouped.items():
-            branch = tree.add(f"[bold]{dest_type}[/bold]")
+            print(f"- {dest_type}:")
             for item in items[:5]:  # Show first 5 items
                 source_name = item["source"].name
                 dest_relative = item["destination"].relative_to(self.root_path)
-                branch.add(f"{source_name} → {dest_relative}")
-
+                print(f"    {source_name} → {dest_relative}")
             if len(items) > 5:
-                branch.add(f"[dim]... and {len(items) - 5} more[/dim]")
-
-        console.print(tree)
+                print(f"    ... and {len(items) - 5} more")
 
         # Summary table
-        table = Table(title="\n📊 Summary")
-        table.add_column("Category", style="cyan")
-        table.add_column("Count", style="green")
-
+        print("\nSummary:")
+        print(f"{'Category':<20} {'Count':<5}")
         for dest_type, items in grouped.items():
-            table.add_row(dest_type, str(len(items)))
-
-        table.add_row("[bold]Total[/bold]", f"[bold]{len(move_plan)}[/bold]")
-        console.print(table)
+            print(f"{dest_type:<20} {len(items):<5}")
+        print(f"{'Total':<20} {len(move_plan):<5}")
 
     def _get_destination_type(self, path: Path) -> str:
         """Get a friendly name for the destination type"""
@@ -177,44 +154,17 @@ class FileOrganizer:
 
     def _execute_plan(self, move_plan: List[Dict]):
         """Execute the organization plan"""
-        console.print("\n🚀 [bold cyan]Executing organization plan...[/bold cyan]")
-
+        print("\n🚀 Executing organization plan...\n")
         success_count = 0
         error_count = 0
-
-        with console.status("[bold green]Moving files...") as status:
-            for i, move in enumerate(move_plan):
-                status.update(f"Moving {i + 1}/{len(move_plan)}: {move['source'].name}")
-
-                try:
-                    self.mover.move(move["source"], move["destination"])
-                    success_count += 1
-                except Exception as e:
-                    console.print(f"[red]Error moving {move['source']}: {e}[/red]")
-                    error_count += 1
-
-        console.print(f"\n[green]✅ Successfully moved: {success_count} files[/green]")
+        for i, move in enumerate(move_plan):
+            print(f"Moving {i + 1}/{len(move_plan)}: {move['source'].name}")
+            try:
+                self.mover.move(move["source"], move["destination"])
+                success_count += 1
+            except Exception as e:
+                print(f"Error moving {move['source']}: {e}")
+                error_count += 1
+        print(f"\n✅ Successfully moved: {success_count} files")
         if error_count > 0:
-            console.print(f"[red]❌ Errors: {error_count} files[/red]")
-
-
-@click.command()
-@click.option("--path", "-p", default=".", help="Path to organize")
-@click.option(
-    "--execute", "-e", is_flag=True, help="Execute the moves (default is dry-run)"
-)
-@click.option("--data-dir", "-d", default="files", help="Directory for organized files")
-def main(path, execute, data_dir):
-    """AI-Powered File Organizer - Intelligently organize your files"""
-    console.print("[bold cyan]🤖 AI File Organizer[/bold cyan]")
-    console.print("[dim]Using Ollama and ResNet for intelligent organization[/dim]\n")
-
-    root_path = Path(path).resolve()
-    data_path = root_path / data_dir
-
-    organizer = FileOrganizer(root_path, data_path)
-    organizer.organize(dry_run=not execute)
-
-
-if __name__ == "__main__":
-    main()
+            print(f"❌ Errors: {error_count} files")

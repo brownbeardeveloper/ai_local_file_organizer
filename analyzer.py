@@ -3,7 +3,7 @@ File Analyzer Module
 Analyzes file content using Ollama LLM and ResNet for images
 """
 
-import os
+import warnings
 import mimetypes
 import magic
 from pathlib import Path
@@ -15,10 +15,6 @@ import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
 import ollama
-from rich.console import Console
-
-console = Console()
-
 
 class FileAnalyzer:
     def __init__(self):
@@ -37,7 +33,13 @@ class FileAnalyzer:
             self.device = torch.device(
                 "mps" if torch.backends.mps.is_available() else "cpu"
             )
-            self.resnet = models.resnet152(pretrained=True)
+            # Use the new weights parameter instead of deprecated pretrained
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.resnet = models.resnet152(
+                    weights=models.ResNet152_Weights.IMAGENET1K_V1
+                )
             self.resnet.to(self.device)
             self.resnet.eval()
 
@@ -55,14 +57,17 @@ class FileAnalyzer:
 
             # Load ImageNet class labels
             self.load_imagenet_classes()
-            console.print("[green]✓ ResNet152 loaded successfully[/green]")
+            print("ResNet152 loaded successfully")
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not load ResNet152: {e}[/yellow]")
+            print(f"Warning: Could not load ResNet152: {e}")
             self.resnet = None
 
         # Check Ollama models
         try:
             models_list = ollama.list()
+            if not models_list or "models" not in models_list:
+                raise Exception("Ollama service not running or no models available")
+
             available_models = [m["name"] for m in models_list["models"]]
 
             # Recommended models for M1 Mac
@@ -72,21 +77,29 @@ class FileAnalyzer:
             for model in recommended:
                 if model in available_models:
                     self.ollama_model = model
-                    console.print(f"[green]✓ Using Ollama model: {model}[/green]")
+                    print(f"Using Ollama model: {model}")
                     break
 
             if not self.ollama_model and available_models:
                 self.ollama_model = available_models[0]
-                console.print(
-                    f"[yellow]Using available Ollama model: {self.ollama_model}[/yellow]"
+                print(
+                    f"Using available Ollama model: {self.ollama_model}"
                 )
 
             if not self.ollama_model:
-                console.print(
-                    "[yellow]No Ollama models found. Install with: ollama pull mistral[/yellow]"
+                print(
+                    "No Ollama models found. Install with: ollama pull mistral"
                 )
         except Exception as e:
-            console.print(f"[yellow]Warning: Ollama not available: {e}[/yellow]")
+            # More graceful Ollama handling - don't show the raw error
+            if "Ollama service not running" in str(e) or "Connection" in str(e):
+                print(
+                    "Ollama not running. AI text analysis disabled."
+                )
+            else:
+                print(
+                    "Ollama not available. AI text analysis disabled."
+                )
             self.ollama_model = None
 
     def load_imagenet_classes(self):
@@ -139,6 +152,23 @@ class FileAnalyzer:
                 "application/x-rar",
             ]:
                 analysis["category"] = "archive"
+
+        # Handle empty files or files without proper mime detection by file extension
+        if "category" not in analysis or analysis["mime_type"] == "inode/x-empty":
+            # Fall back to file extension for categorization
+            file_type = analysis["file_type"]
+            if file_type in ["image"]:
+                analysis["category"] = "image"
+            elif file_type in ["document"]:
+                analysis["category"] = "document"
+            elif file_type in ["video"]:
+                analysis["category"] = "video"
+            elif file_type in ["audio"]:
+                analysis["category"] = "audio"
+            elif file_type in ["archive"]:
+                analysis["category"] = "archive"
+            else:
+                analysis["category"] = "misc"
 
         # Handle hidden files
         if file_info.get("type") == "hidden_file":
@@ -234,7 +264,7 @@ class FileAnalyzer:
                 result.update(self._analyze_with_ollama(path, "image"))
 
         except Exception as e:
-            console.print(f"[dim]Could not analyze image {path.name}: {e}[/dim]")
+            print(f"[dim]Could not analyze image {path.name}: {e}[/dim]")
 
         return result
 
@@ -256,7 +286,7 @@ class FileAnalyzer:
         try:
             result.update(self._analyze_with_ollama(path, "text"))
         except Exception as e:
-            console.print(f"[dim]Could not analyze text {path.name}: {e}[/dim]")
+            print(f"[dim]Could not analyze text {path.name}: {e}[/dim]")
 
         return result
 
