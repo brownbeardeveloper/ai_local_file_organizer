@@ -1,8 +1,28 @@
-python-magic
-ExifRead==3.3.1
-pillow==11.2.1
-ultralytics==8.3.150
-ollama
-mutagen
-PyPDF2
-python-docx
+# Core AI Models
+ultralytics>=8.0.0          # YOLO11
+ollama>=0.1.0               # Ollama client
+
+# Document Processing
+PyPDF2>=3.0.0               # PDF text extraction
+python-docx>=0.8.0          # Word document processing
+PyMuPDF>=1.23.0             # PDF to image conversion
+
+# OCR & Vision (Required)
+paddlepaddle>=2.5.0         # PaddleOCR backend (Required)
+paddleocr>=2.7.0            # Fast OCR engine (Primary)
+easyocr>=1.7.0              # Multi-language OCR (Fallback)
+pytesseract>=0.3.10         # Tesseract OCR wrapper (Fallback)
+Pillow>=10.0.0              # Image processing (Required)
+numpy>=1.21.0               # Array processing for PaddleOCR
+
+# Metadata & Analysis
+ExifRead>=3.0.0             # Image metadata
+pathlib                     # Path handling (built-in)
+
+# Mac M1 GPU Acceleration (required for EasyOCR GPU)
+torch>=2.0.0                # PyTorch with MPS support for Apple Silicon
+torchvision>=0.15.0         # Computer vision models
+
+# Optional Advanced Models (uncomment if needed)
+# transformers>=4.30.0      # For HuggingFace models
+# paddlepaddle>=2.5.0       # PaddleOCR

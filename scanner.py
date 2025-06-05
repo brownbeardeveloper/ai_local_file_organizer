@@ -127,7 +127,19 @@ class FileScanner:
                 return "video"
             elif suffix in [".mp3", ".wav", ".flac", ".aac", ".ogg"]:
                 return "audio"
-            elif suffix in [".txt", ".md", ".doc", ".docx", ".pdf"]:
+            elif suffix in [
+                ".txt",
+                ".md",
+                ".doc",
+                ".docx",
+                ".pdf",
+                ".csv",
+                ".py",
+                ".js",
+                ".sh",
+                ".html",
+                ".css",
+            ]:
                 return "document"
             elif suffix in [".zip", ".rar", ".tar", ".gz", ".7z"]:
                 return "archive"
@@ -141,7 +153,18 @@ class FileScanner:
             return "video"
         elif mime_type.startswith("audio/"):
             return "audio"
-        elif mime_type in ["application/pdf", "application/msword", "text/plain"]:
+        elif mime_type in [
+            "application/pdf",
+            "application/msword",
+            "text/plain",
+            "text/csv",
+            "text/x-shellscript",
+            "application/x-sh",
+            "text/x-python",
+            "text/javascript",
+            "text/html",
+            "text/css",
+        ]:
             return "document"
         elif mime_type.startswith("application/zip") or "archive" in mime_type:
             return "archive"

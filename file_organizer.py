@@ -53,7 +53,7 @@ class FileOrganizer:
 
     def organize(self, dry_run: bool = True):
         """Main organization workflow"""
-        print("\n🔍 Scanning files...")
+        print("\nScanning files...")
         files_to_organize = self.scanner.scan()
 
         if not files_to_organize:
@@ -67,7 +67,9 @@ class FileOrganizer:
         move_plan = []
 
         for i, file_info in enumerate(files_to_organize):
-            print(f"Processing {i + 1}/{len(files_to_organize)}: {file_info['path'].name}")
+            print(
+                f"Processing {i + 1}/{len(files_to_organize)}: {file_info['path'].name}"
+            )
             # Analyze file
             analysis = self.analyzer.analyze(file_info)
             # Get suggested path
@@ -91,7 +93,7 @@ class FileOrganizer:
 
         # Ask for confirmation
         if not dry_run:
-            if input("\nExecute this organization plan? (y/n): ").lower() == 'y':
+            if input("\nExecute this organization plan? (y/n): ").lower() == "y":
                 self._execute_plan(move_plan)
             else:
                 print("Organization cancelled")
@@ -154,7 +156,7 @@ class FileOrganizer:
 
     def _execute_plan(self, move_plan: List[Dict]):
         """Execute the organization plan"""
-        print("\n🚀 Executing organization plan...\n")
+        print("\nExecuting organization plan...\n")
         success_count = 0
         error_count = 0
         for i, move in enumerate(move_plan):
@@ -165,6 +167,6 @@ class FileOrganizer:
             except Exception as e:
                 print(f"Error moving {move['source']}: {e}")
                 error_count += 1
-        print(f"\n✅ Successfully moved: {success_count} files")
+        print(f"\nSuccessfully moved: {success_count} files")
         if error_count > 0:
-            print(f"❌ Errors: {error_count} files")
+            print(f"Errors: {error_count} files")

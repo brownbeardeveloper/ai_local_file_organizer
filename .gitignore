@@ -21,6 +21,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.pytest_cache
 
 # Virtual Environments
 .venv/
@@ -90,6 +91,3 @@ desktop.ini
 
 # README.md 
 README.md
-
-# Example
-example.py

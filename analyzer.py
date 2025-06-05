@@ -10,6 +10,15 @@ import exifread
 from PIL import Image
 from yolo_analyzer import YOLOAnalyzer
 from ollama_analyzer import OllamaAnalyzer
+from ocr_analyzer import OCRAnalyzer
+import torch
+
+# Configure PyTorch for Mac M1 optimization
+if torch.backends.mps.is_available():
+    torch.backends.mps.is_built()
+    print("Mac M1 GPU (MPS) acceleration available")
+else:
+    print("MPS not available, using CPU")
 
 
 class FileAnalyzer:
@@ -20,15 +29,18 @@ class FileAnalyzer:
         large_file_threshold: int = 100 * 1024 * 1024,
         yolo_analyzer: Optional[YOLOAnalyzer] = None,
         ollama_analyzer: Optional[OllamaAnalyzer] = None,
+        ocr_analyzer: Optional[OCRAnalyzer] = None,
         # Backward compatibility - create default analyzers if not provided
         yolo_model_name: str = "yolo11n.pt",
-        ollama_model_name: str = "mistral:latest",
+        ollama_model_name: str = "qwen3:4b",
+        ocr_model_name: str = "paddleocr",
     ):
         self.large_file_threshold = large_file_threshold
 
         # Use provided analyzers or create default ones
         self.yolo_analyzer = yolo_analyzer or YOLOAnalyzer(yolo_model_name)
         self.ollama_analyzer = ollama_analyzer or OllamaAnalyzer(ollama_model_name)
+        self.ocr_analyzer = ocr_analyzer or OCRAnalyzer(ocr_model_name)
 
     def analyze(self, file_info: Dict) -> Dict[str, Any]:
         """Analyze file content and return insights about what's inside"""
@@ -189,7 +201,7 @@ class FileAnalyzer:
             pass
 
     def _analyze_pdf_content(self, path: Path) -> Dict[str, Any]:
-        """Analyze PDF content"""
+        """Analyze PDF content with OCR fallback for scanned documents"""
         try:
             import PyPDF2
 
@@ -204,6 +216,7 @@ class FileAnalyzer:
                 # Try to extract some text for content analysis
                 if len(pdf_reader.pages) > 0 and not pdf_reader.is_encrypted:
                     first_page = pdf_reader.pages[0].extract_text()
+
                     if len(first_page) > 100:
                         # Use Ollama to analyze PDF content
                         if self.ollama_analyzer.is_available():
@@ -212,7 +225,21 @@ class FileAnalyzer:
                             )
                             info.update(content_analysis)
                     else:
-                        info["content"] = "image_based_pdf"
+                        # PDF might be scanned - try OCR
+                        ocr_result = self.ocr_analyzer.extract_text_from_pdf(path)
+                        if ocr_result["text"] and len(ocr_result["text"]) > 50:
+                            if self.ollama_analyzer.is_available():
+                                content_analysis = self.ollama_analyzer.analyze_text(
+                                    ocr_result["text"][:1000], "document"
+                                )
+                                info.update(content_analysis)
+                                info["ocr_extracted"] = True
+                                info["ocr_confidence"] = ocr_result["confidence"]
+                                info["ocr_engine"] = ocr_result["engine"]
+                            else:
+                                info["content"] = "scanned_document"
+                        else:
+                            info["content"] = "image_based_pdf"
 
                 return info
         except:
@@ -248,20 +275,30 @@ class FileAnalyzer:
             return {"content": "text_analysis_failed"}
 
     def _analyze_csv_content(self, path: Path) -> Dict[str, Any]:
-        """Analyze CSV file structure"""
+        """Analyze CSV file structure and content"""
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as file:
-                first_lines = [file.readline().strip() for _ in range(3)]
+                content = file.read(1500)  # Read more for better analysis
 
-            if first_lines[0]:
-                columns = len(first_lines[0].split(","))
-                return {
-                    "content": "csv_data",
-                    "columns": columns,
-                    "has_header": "," in first_lines[0],
-                }
-            else:
+            if len(content.strip()) == 0:
                 return {"content": "empty_csv"}
+
+            lines = content.split("\n")
+            columns = len(lines[0].split(",")) if lines else 0
+
+            # AI content analysis for CSV
+            info = {
+                "columns": columns,
+                "has_header": "," in lines[0] if lines else False,
+            }
+
+            if self.ollama_analyzer.is_available() and len(content.strip()) > 50:
+                ai_analysis = self.ollama_analyzer.analyze_text(content, "csv")
+                info.update(ai_analysis)
+            else:
+                info["content"] = "csv_data"
+
+            return info
         except:
             return {"content": "csv_analysis_failed"}
 
@@ -276,11 +313,29 @@ class FileAnalyzer:
             ".css": "css",
         }
 
-        return {
-            "content": "code",
-            "language": language_map.get(suffix, "unknown"),
-            "type": "script" if suffix == ".sh" else "source_code",
-        }
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as file:
+                content = file.read(1000)  # Read first 1000 chars
+
+            info = {
+                "language": language_map.get(suffix, "unknown"),
+                "type": "script" if suffix == ".sh" else "source_code",
+            }
+
+            # AI analysis for scripts to understand what they do
+            if self.ollama_analyzer.is_available() and len(content.strip()) > 20:
+                ai_analysis = self.ollama_analyzer.analyze_text(content, "script")
+                info.update(ai_analysis)
+            else:
+                info["content"] = "code"
+
+            return info
+        except:
+            return {
+                "content": "code",
+                "language": language_map.get(suffix, "unknown"),
+                "type": "script" if suffix == ".sh" else "source_code",
+            }
 
     def _analyze_word_content(self, path: Path) -> Dict[str, Any]:
         """Analyze Word document content"""

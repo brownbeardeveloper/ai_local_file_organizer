@@ -132,8 +132,18 @@ class PathSuggester:
 
         base_path = self.data_path / "documents"
 
+        # Specific document types first
+        if "resume" in content_type or "cv" in file_analysis["name"].lower():
+            category_path = base_path / "personal" / "career" / year
+        elif "insurance" in content_type:
+            category_path = base_path / "personal" / "insurance" / year
+        elif "certificate" in content_type:
+            category_path = base_path / "personal" / "certificates" / year
+        elif "notes" in content_type and "summary" in file_analysis["name"].lower():
+            category_path = base_path / "reference" / "summaries"
+
         # Work documents
-        if self._is_work_document(ai_insights, file_analysis["name"]):
+        elif self._is_work_document(ai_insights, file_analysis["name"]):
             if "report" in content_type or "analysis" in content_type:
                 category_path = base_path / "work" / "reports" / year
             elif "presentation" in content_type:
@@ -308,32 +318,56 @@ class PathSuggester:
         return cleaned.strip("-")
 
     def _categorize_object(self, obj: str) -> str:
-        """Categorize detected objects into broader categories"""
-        nature_objects = {
-            "tree",
-            "flower",
-            "plant",
-            "animal",
-            "bird",
-            "cat",
-            "dog",
-            "landscape",
-        }
-        tech_objects = {"computer", "phone", "screen", "keyboard", "monitor", "laptop"}
-        people_objects = {"person", "people", "face", "group"}
-        vehicle_objects = {"car", "truck", "motorcycle", "bike", "vehicle"}
+        """Map detected objects to logical categories"""
+        obj = obj.lower()
 
-        obj_lower = obj.lower()
-        if obj_lower in nature_objects:
-            return "nature"
-        elif obj_lower in tech_objects:
-            return "technology"
-        elif obj_lower in people_objects:
+        # People and faces
+        if obj in ["person", "people", "face", "child", "man", "woman"]:
             return "people"
-        elif obj_lower in vehicle_objects:
+
+        # Food and dining
+        if obj in [
+            "food",
+            "meal",
+            "pizza",
+            "sandwich",
+            "cake",
+            "fruit",
+            "dining-table",
+            "dining table",
+            "table",
+        ]:
+            return "food"
+
+        # Animals
+        if obj in ["cat", "dog", "bird", "horse", "cow", "sheep", "animal"]:
+            return "animals"
+
+        # Vehicles
+        if obj in ["car", "truck", "bus", "motorcycle", "bicycle", "plane", "boat"]:
             return "vehicles"
-        else:
+
+        # Objects and items
+        if obj in [
+            "chair",
+            "sofa",
+            "bed",
+            "tv",
+            "laptop",
+            "phone",
+            "book",
+            "bottle",
+            "cup",
+            "clock",
+            "scissors",
+            "teddy bear",
+            "hair drier",
+            "toothbrush",
+        ]:
             return "objects"
+
+        # Default fallback
+        return "objects"
 
     # Content detection helpers
     def _is_screenshot_content(self, ai_insights: Dict, filename: str) -> bool:

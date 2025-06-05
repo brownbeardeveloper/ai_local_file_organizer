@@ -19,6 +19,14 @@ class FileMover:
         self.log_file = logs_dir / "file_organizer.json"
         self._load_log()
 
+    def organize_file(self, file_analysis: Dict, suggested_path: Path) -> bool:
+        """Move file based on suggester recommendation"""
+        if not suggested_path:
+            return False
+
+        source_path = Path(file_analysis["path"])
+        return self.move(source_path, suggested_path)
+
     def move(self, source: Path, destination: Path) -> bool:
         """Move a file or directory to a new location"""
         try:
@@ -58,11 +66,8 @@ class FileMover:
             raise Exception(f"Failed to move {source} to {destination}: {str(e)}")
 
     def _handle_conflicts(self, destination: Path) -> Path:
-        """Handle naming conflicts by adding a number suffix"""
-        if not destination.exists():
-            return destination
-
-        # For files, add number before extension
+        """Add sequential numbers to all files (001, 002, etc.)"""
+        # For files, add 3-digit number before extension
         if destination.is_file() or "." in destination.name:
             stem = destination.stem
             suffix = destination.suffix
@@ -70,7 +75,7 @@ class FileMover:
 
             counter = 1
             while True:
-                new_name = f"{stem}_{counter}{suffix}"
+                new_name = f"{stem}_{counter:03d}{suffix}"
                 new_path = parent / new_name
                 if not new_path.exists():
                     return new_path
@@ -79,7 +84,7 @@ class FileMover:
             # For directories
             counter = 1
             while True:
-                new_path = destination.parent / f"{destination.name}_{counter}"
+                new_path = destination.parent / f"{destination.name}_{counter:03d}"
                 if not new_path.exists():
                     return new_path
                 counter += 1
