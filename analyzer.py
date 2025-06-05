@@ -1,329 +1,312 @@
 """
 File Analyzer Module
-Analyzes file content using Ollama LLM and ResNet for images
+Orchestrates file content analysis using specialized AI model analyzers
 """
 
-import warnings
-import mimetypes
-import magic
 from pathlib import Path
 from typing import Dict, Optional, Any
 from datetime import datetime
 import exifread
 from PIL import Image
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
-import ollama
+
+# Import our specialized AI analyzers
+from yolo_analyzer import YOLOAnalyzer
+from ollama_analyzer import OllamaAnalyzer
+
 
 class FileAnalyzer:
-    def __init__(self):
-        self.setup_models()
+    """Orchestrates file analysis using specialized AI analyzers"""
 
-        # File size threshold (100MB)
-        self.large_file_threshold = 100 * 1024 * 1024
+    def __init__(
+        self,
+        large_file_threshold: int = 100 * 1024 * 1024,
+        yolo_analyzer: Optional[YOLOAnalyzer] = None,
+        ollama_analyzer: Optional[OllamaAnalyzer] = None,
+        # Backward compatibility - create default analyzers if not provided
+        yolo_model_name: str = "yolo11n.pt",
+        ollama_model_name: str = "mistral:latest",
+    ):
+        self.large_file_threshold = large_file_threshold
 
-        # Initialize mimetypes
-        mimetypes.init()
-
-    def setup_models(self):
-        """Setup AI models for analysis"""
-        # Setup ResNet152 for image analysis (better than ResNet50 for M1)
-        try:
-            self.device = torch.device(
-                "mps" if torch.backends.mps.is_available() else "cpu"
-            )
-            # Use the new weights parameter instead of deprecated pretrained
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                self.resnet = models.resnet152(
-                    weights=models.ResNet152_Weights.IMAGENET1K_V1
-                )
-            self.resnet.to(self.device)
-            self.resnet.eval()
-
-            # Image preprocessing
-            self.preprocess = transforms.Compose(
-                [
-                    transforms.Resize(256),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
-                ]
-            )
-
-            # Load ImageNet class labels
-            self.load_imagenet_classes()
-            print("ResNet152 loaded successfully")
-        except Exception as e:
-            print(f"Warning: Could not load ResNet152: {e}")
-            self.resnet = None
-
-        # Check Ollama models
-        try:
-            models_list = ollama.list()
-            if not models_list or "models" not in models_list:
-                raise Exception("Ollama service not running or no models available")
-
-            available_models = [m["name"] for m in models_list["models"]]
-
-            # Recommended models for M1 Mac
-            recommended = ["mistral:latest", "llama2:latest", "phi:latest"]
-            self.ollama_model = None
-
-            for model in recommended:
-                if model in available_models:
-                    self.ollama_model = model
-                    print(f"Using Ollama model: {model}")
-                    break
-
-            if not self.ollama_model and available_models:
-                self.ollama_model = available_models[0]
-                print(
-                    f"Using available Ollama model: {self.ollama_model}"
-                )
-
-            if not self.ollama_model:
-                print(
-                    "No Ollama models found. Install with: ollama pull mistral"
-                )
-        except Exception as e:
-            # More graceful Ollama handling - don't show the raw error
-            if "Ollama service not running" in str(e) or "Connection" in str(e):
-                print(
-                    "Ollama not running. AI text analysis disabled."
-                )
-            else:
-                print(
-                    "Ollama not available. AI text analysis disabled."
-                )
-            self.ollama_model = None
-
-    def load_imagenet_classes(self):
-        """Load ImageNet class labels"""
-        try:
-            # Basic categories for common objects
-            self.imagenet_categories = {
-                "person": ["person", "face", "people"],
-                "animal": ["dog", "cat", "bird", "fish", "animal"],
-                "food": ["food", "meal", "dish", "fruit", "vegetable"],
-                "nature": ["mountain", "beach", "forest", "tree", "landscape"],
-                "vehicle": ["car", "bicycle", "motorcycle", "bus", "train"],
-                "electronics": ["computer", "phone", "screen", "keyboard"],
-                "document": ["document", "paper", "text", "book"],
-            }
-        except:
-            self.imagenet_categories = {}
+        # Use provided analyzers or create default ones
+        self.yolo_analyzer = yolo_analyzer or YOLOAnalyzer(yolo_model_name)
+        self.ollama_analyzer = ollama_analyzer or OllamaAnalyzer(ollama_model_name)
 
     def analyze(self, file_info: Dict) -> Dict[str, Any]:
-        """Analyze a file and return insights"""
+        """Analyze file content and return insights about what's inside"""
+        file_path = Path(file_info["path"])
+
+        # Start with basic info (don't duplicate scanner's work)
         analysis = {
-            "file_type": self._get_file_type(file_info["path"]),
-            "mime_type": self._get_mime_type(file_info["path"]),
-            "is_large": file_info["size"] > self.large_file_threshold,
-            "size": file_info["size"],
+            "content_analysis": "pending",
+            "ai_insights": {},
         }
 
-        # Special handling for projects
-        if file_info.get("is_project"):
-            analysis["category"] = "project"
-            analysis["is_git"] = file_info.get("is_git", False)
-            return analysis
+        # Content analysis based on file category from scanner
+        file_category = file_info.get("category", "other")
 
-        # Analyze based on file type
-        if analysis["mime_type"]:
-            if analysis["mime_type"].startswith("image/"):
-                analysis.update(self._analyze_image(file_info["path"]))
-            elif analysis["mime_type"].startswith("text/") or analysis["mime_type"] in [
-                "application/pdf",
-                "application/json",
-            ]:
-                analysis.update(self._analyze_text(file_info["path"]))
-            elif analysis["mime_type"].startswith("video/"):
-                analysis["category"] = "video"
-            elif analysis["mime_type"].startswith("audio/"):
-                analysis["category"] = "audio"
-            elif analysis["mime_type"] in [
-                "application/zip",
-                "application/x-tar",
-                "application/x-rar",
-            ]:
-                analysis["category"] = "archive"
-
-        # Handle empty files or files without proper mime detection by file extension
-        if "category" not in analysis or analysis["mime_type"] == "inode/x-empty":
-            # Fall back to file extension for categorization
-            file_type = analysis["file_type"]
-            if file_type in ["image"]:
-                analysis["category"] = "image"
-            elif file_type in ["document"]:
-                analysis["category"] = "document"
-            elif file_type in ["video"]:
-                analysis["category"] = "video"
-            elif file_type in ["audio"]:
-                analysis["category"] = "audio"
-            elif file_type in ["archive"]:
-                analysis["category"] = "archive"
-            else:
-                analysis["category"] = "misc"
-
-        # Handle hidden files
-        if file_info.get("type") == "hidden_file":
-            analysis["category"] = "hidden"
+        if file_category == "image":
+            analysis.update(self._analyze_image_content(file_path))
+        elif file_category == "document":
+            analysis.update(self._analyze_document_content(file_path, file_info))
+        elif file_category == "video":
+            analysis.update(self._analyze_video_content(file_path))
+        elif file_category == "audio":
+            analysis.update(self._analyze_audio_content(file_path))
+        else:
+            analysis["content_analysis"] = "unsupported_type"
 
         return analysis
 
-    def _get_file_type(self, path: Path) -> str:
-        """Get file type based on extension"""
-        ext = path.suffix.lower()
-
-        # Common file type mappings
-        type_map = {
-            ".pdf": "document",
-            ".doc": "document",
-            ".docx": "document",
-            ".txt": "document",
-            ".md": "document",
-            ".jpg": "image",
-            ".jpeg": "image",
-            ".png": "image",
-            ".gif": "image",
-            ".mp4": "video",
-            ".avi": "video",
-            ".mov": "video",
-            ".mp3": "audio",
-            ".wav": "audio",
-            ".flac": "audio",
-            ".zip": "archive",
-            ".tar": "archive",
-            ".gz": "archive",
-            ".rar": "archive",
-            ".py": "code",
-            ".js": "code",
-            ".ts": "code",
-            ".jsx": "code",
-            ".tsx": "code",
+    def _analyze_image_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze what's actually IN the image"""
+        result = {
+            "content_analysis": "image_analyzed",
+            "ai_insights": {},
         }
 
-        return type_map.get(ext, "misc")
-
-    def _get_mime_type(self, path: Path) -> Optional[str]:
-        """Get MIME type of file"""
         try:
-            # Try python-magic first
-            mime = magic.from_file(str(path), mime=True)
-            return mime
-        except:
-            # Fallback to mimetypes
-            mime_type, _ = mimetypes.guess_type(str(path))
-            return mime_type
+            # Get image metadata first
+            image = Image.open(path).convert("RGB")
+            width, height = image.size
+            aspect_ratio = width / height
 
-    def _analyze_image(self, path: Path) -> Dict[str, Any]:
-        """Analyze image content and metadata"""
-        result = {"category": "image"}
+            # Determine image characteristics
+            if aspect_ratio > 1.5:
+                image_type = "panoramic"
+            elif abs(aspect_ratio - 1.0) < 0.1:
+                image_type = "square"
+            elif width < 800 or height < 600:
+                image_type = "small_image"
+            elif width > 3000 or height > 3000:
+                image_type = "high_resolution"
+            else:
+                image_type = "standard"
+
+            result["ai_insights"]["image_type"] = image_type
+            result["ai_insights"]["dimensions"] = f"{width}x{height}"
+
+            # YOLO analysis for object detection
+            if self.yolo_analyzer.is_available():
+                detected_objects = self.yolo_analyzer.detect_objects(image)
+                if detected_objects:
+                    result["ai_insights"].update(detected_objects)
+
+            # Extract EXIF for photo metadata
+            self._extract_photo_context(path, result)
+
+        except Exception as e:
+            result["content_analysis"] = f"image_error: {str(e)}"
+
+        return result
+
+    def _analyze_document_content(self, path: Path, file_info: Dict) -> Dict[str, Any]:
+        """Analyze what's actually IN the document"""
+        result = {
+            "content_analysis": "document_analyzed",
+            "ai_insights": {},
+        }
 
         try:
-            # Extract EXIF data for date
+            suffix = file_info.get("suffix", "").lower()
+            file_size = file_info.get("size", 0)
+
+            # Skip empty files
+            if file_size == 0:
+                result["ai_insights"]["content"] = "empty_file"
+                return result
+
+            # Skip very large files (>5MB) for content analysis
+            if file_size > 5 * 1024 * 1024:
+                result["ai_insights"]["content"] = "large_file_skipped"
+                return result
+
+            if suffix == ".pdf":
+                content_info = self._analyze_pdf_content(path)
+            elif suffix in [".txt", ".md"]:
+                content_info = self._analyze_text_content(path)
+            elif suffix in [".doc", ".docx"]:
+                content_info = self._analyze_word_content(path)
+            elif suffix in [".csv"]:
+                content_info = self._analyze_csv_content(path)
+            elif suffix in [".py", ".js", ".sh", ".html", ".css"]:
+                content_info = self._analyze_code_content(path)
+            else:
+                content_info = {"content": "unsupported_document_type"}
+
+            result["ai_insights"].update(content_info)
+
+        except Exception as e:
+            result["content_analysis"] = f"document_error: {str(e)}"
+
+        return result
+
+    def _analyze_video_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze video file characteristics"""
+        return {
+            "content_analysis": "video_detected",
+            "ai_insights": {"content": "video_analysis_not_implemented"},
+        }
+
+    def _analyze_audio_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze audio file characteristics"""
+        return {
+            "content_analysis": "audio_detected",
+            "ai_insights": {"content": "audio_analysis_not_implemented"},
+        }
+
+    def _extract_photo_context(self, path: Path, result: Dict):
+        """Extract photo metadata for context"""
+        try:
             with open(path, "rb") as f:
                 tags = exifread.process_file(f, stop_tag="EXIF DateTimeOriginal")
                 if "EXIF DateTimeOriginal" in tags:
                     date_str = str(tags["EXIF DateTimeOriginal"])
                     try:
-                        result["date_taken"] = datetime.strptime(
-                            date_str, "%Y:%m:%d %H:%M:%S"
+                        photo_date = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                        result["ai_insights"]["photo_date"] = photo_date.strftime(
+                            "%Y-%m-%d"
                         )
-                    except:
+
+                        # Determine if it's recent or old
+                        days_old = (datetime.now() - photo_date).days
+                        if days_old < 30:
+                            result["ai_insights"]["age"] = "recent"
+                        elif days_old < 365:
+                            result["ai_insights"]["age"] = "this_year"
+                        else:
+                            result["ai_insights"]["age"] = "old"
+                    except ValueError:
                         pass
+        except Exception:
+            pass
 
-            # Use ResNet for content classification
-            if self.resnet:
-                image = Image.open(path).convert("RGB")
-                input_tensor = self.preprocess(image)
-                input_batch = input_tensor.unsqueeze(0).to(self.device)
-
-                with torch.no_grad():
-                    output = self.resnet(input_batch)
-                    _, predicted = torch.max(output, 1)
-
-                    # Get top predictions
-                    probabilities = torch.nn.functional.softmax(output[0], dim=0)
-                    top5_prob, top5_class = torch.topk(probabilities, 5)
-
-                    # Simple categorization based on predictions
-                    result["ai_category"] = self._categorize_image_prediction(
-                        top5_class
-                    )
-                    result["confidence"] = float(top5_prob[0])
-
-            # Use Ollama for more detailed analysis if available
-            if self.ollama_model and result.get("ai_category") == "misc":
-                # Only for ambiguous images
-                result.update(self._analyze_with_ollama(path, "image"))
-
-        except Exception as e:
-            print(f"[dim]Could not analyze image {path.name}: {e}[/dim]")
-
-        return result
-
-    def _categorize_image_prediction(self, predictions) -> str:
-        """Categorize image based on ResNet predictions"""
-        # This is simplified - in real implementation you'd map ImageNet classes
-        # For now, return generic categories
-        return "image"  # Would be more specific with proper ImageNet mapping
-
-    def _analyze_text(self, path: Path) -> Dict[str, Any]:
-        """Analyze text content"""
-        result = {"category": "document"}
-
-        if (
-            not self.ollama_model or path.stat().st_size > 1024 * 1024
-        ):  # Skip large files
-            return result
-
+    def _analyze_pdf_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze PDF content"""
         try:
-            result.update(self._analyze_with_ollama(path, "text"))
-        except Exception as e:
-            print(f"[dim]Could not analyze text {path.name}: {e}[/dim]")
+            import PyPDF2
 
-        return result
+            with open(path, "rb") as file:
+                pdf_reader = PyPDF2.PdfReader(file)
 
-    def _analyze_with_ollama(self, path: Path, file_type: str) -> Dict[str, Any]:
-        """Use Ollama to analyze file content"""
-        try:
-            if file_type == "text":
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read(5000)  # Read first 5000 chars
+                info = {
+                    "pages": len(pdf_reader.pages),
+                    "encrypted": pdf_reader.is_encrypted,
+                }
 
-                prompt = f"""Analyze this text content and categorize it. Reply with ONLY one word from: 
-                [document, code, config, data, notes, report, email, article, manual, other]
-                
-                Content: {content[:1000]}..."""
+                # Try to extract some text for content analysis
+                if len(pdf_reader.pages) > 0 and not pdf_reader.is_encrypted:
+                    first_page = pdf_reader.pages[0].extract_text()
+                    if len(first_page) > 100:
+                        # Use Ollama to analyze PDF content
+                        if self.ollama_analyzer.is_available():
+                            content_analysis = self.ollama_analyzer.analyze_text(
+                                first_page[:1000], "document"
+                            )
+                            info.update(content_analysis)
+                    else:
+                        info["content"] = "image_based_pdf"
 
-            else:  # image
-                prompt = """Based on an image analysis, suggest if this image belongs to:
-                [personal, work, screenshot, meme, document, nature, product, other]
-                Reply with ONLY one word."""
-
-            response = ollama.chat(
-                model=self.ollama_model, messages=[{"role": "user", "content": prompt}]
-            )
-
-            category = response["message"]["content"].strip().lower()
-            return {"ai_category": category}
-
-        except Exception as e:
-            return {}
-
-    def _get_file_date(self, path: Path) -> Optional[datetime]:
-        """Get file creation or modification date"""
-        try:
-            stat = path.stat()
-            # Use creation time on macOS
-            return datetime.fromtimestamp(
-                stat.st_birthtime if hasattr(stat, "st_birthtime") else stat.st_mtime
-            )
+                return info
         except:
-            return None
+            return {"content": "pdf_analysis_failed"}
+
+    def _analyze_text_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze text file content"""
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as file:
+                content = file.read(2000)  # Read first 2000 chars
+
+                if len(content.strip()) == 0:
+                    return {"content": "empty_text_file"}
+
+                # Basic content analysis
+                lines = content.split("\n")
+                info = {
+                    "length": "short"
+                    if len(content) < 500
+                    else "medium"
+                    if len(content) < 5000
+                    else "long",
+                    "lines": len(lines),
+                }
+
+                # AI content analysis
+                if self.ollama_analyzer.is_available() and len(content.strip()) > 50:
+                    ai_analysis = self.ollama_analyzer.analyze_text(content, "document")
+                    info.update(ai_analysis)
+
+                return info
+        except:
+            return {"content": "text_analysis_failed"}
+
+    def _analyze_csv_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze CSV file structure"""
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as file:
+                first_lines = [file.readline().strip() for _ in range(3)]
+
+            if first_lines[0]:
+                columns = len(first_lines[0].split(","))
+                return {
+                    "content": "csv_data",
+                    "columns": columns,
+                    "has_header": "," in first_lines[0],
+                }
+            else:
+                return {"content": "empty_csv"}
+        except:
+            return {"content": "csv_analysis_failed"}
+
+    def _analyze_code_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze code file content"""
+        suffix = path.suffix.lower()
+        language_map = {
+            ".py": "python",
+            ".js": "javascript",
+            ".sh": "shell_script",
+            ".html": "html",
+            ".css": "css",
+        }
+
+        return {
+            "content": "code",
+            "language": language_map.get(suffix, "unknown"),
+            "type": "script" if suffix == ".sh" else "source_code",
+        }
+
+    def _analyze_word_content(self, path: Path) -> Dict[str, Any]:
+        """Analyze Word document content"""
+        try:
+            from docx import Document
+
+            doc = Document(path)
+
+            # Count content
+            paragraph_count = len(doc.paragraphs)
+            word_count = sum(
+                len(p.text.split()) for p in doc.paragraphs if p.text.strip()
+            )
+
+            info = {
+                "content": "word_document",
+                "paragraphs": paragraph_count,
+                "words": word_count,
+            }
+
+            # Get a sample of text for AI analysis
+            if self.ollama_analyzer.is_available() and word_count > 0:
+                sample_text = ""
+                for p in doc.paragraphs[:5]:  # First 5 paragraphs
+                    if p.text.strip():
+                        sample_text += p.text + " "
+
+                if len(sample_text) > 100:
+                    ai_analysis = self.ollama_analyzer.analyze_text(
+                        sample_text[:1000], "document"
+                    )
+                    info.update(ai_analysis)
+
+            return info
+        except:
+            return {"content": "word_analysis_failed"}

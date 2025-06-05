@@ -3,7 +3,6 @@ Enhanced File Scanner Module
 Discovers files and folders while extracting comprehensive metadata
 """
 
-import os
 import mimetypes
 from pathlib import Path
 from typing import List, Dict, Any
