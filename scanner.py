@@ -15,19 +15,47 @@ class FileScanner:
         self.root_path = Path(root_path)
 
         self.ignore_dirs = {
-            "__pycache__",
-            "node_modules",
+            # Version control
             ".git",
             ".svn",
+            ".hg",
+            # Python
+            "__pycache__",
+            ".venv",
+            "venv",
+            "env",
+            ".pytest_cache",
+            # Node.js
+            "node_modules",
+            ".npm",
+            # Build/output
             "build",
             "dist",
             "target",
+            "out",
+            "bin",
+            # IDE/Editor
+            ".vscode",
+            ".idea",
+            ".vs",
+            ".eclipse",
+            # Cache/temp
             ".cache",
             "tmp",
             "temp",
+            ".tmp",
+            # Our organized files
+            "organized_files",
         }
 
-        self.ignore_files = {".DS_Store", "Thumbs.db", "*.tmp", "*.cache", "*.log"}
+        # Focus on actual user files that need organization
+        self.ignore_files = {
+            ".DS_Store",
+            "Thumbs.db",
+            "*.tmp",
+            "*.cache",
+            "*.log",
+        }
 
     def scan(self) -> List[Dict[str, Any]]:
         """Scan the directory and return files with metadata"""
@@ -127,7 +155,38 @@ class FileScanner:
             if part in self.ignore_dirs:
                 return True
 
+        # Skip if in a project directory (contains certain project files)
+        if self._is_in_project_directory(file_path):
+            return True
+
         # Skip ignored files
         return any(
             fnmatch.fnmatch(file_path.name, pattern) for pattern in self.ignore_files
         )
+
+    def _is_in_project_directory(self, file_path: Path) -> bool:
+        """Check if file is inside a project directory"""
+        # Look for project indicators in parent directories
+        current_dir = file_path.parent
+        project_indicators = {
+            "requirements.txt",
+            "package.json",
+            "setup.py",
+            ".gitignore",
+            ".git",
+            ".venv",
+            "venv",
+            "Cargo.toml",
+            "pom.xml",
+            "build.gradle",
+            "Makefile",
+        }
+
+        while current_dir != self.root_path and current_dir != current_dir.parent:
+            # Check if this directory contains project files
+            for indicator in project_indicators:
+                if (current_dir / indicator).exists():
+                    return True
+            current_dir = current_dir.parent
+
+        return False

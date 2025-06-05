@@ -8,8 +8,6 @@ from typing import Dict, Optional, Any
 from datetime import datetime
 import exifread
 from PIL import Image
-
-# Import our specialized AI analyzers
 from yolo_analyzer import YOLOAnalyzer
 from ollama_analyzer import OllamaAnalyzer
 
@@ -36,8 +34,17 @@ class FileAnalyzer:
         """Analyze file content and return insights about what's inside"""
         file_path = Path(file_info["path"])
 
-        # Start with basic info (don't duplicate scanner's work)
+        # Start with file metadata from scanner and add analysis results
         analysis = {
+            # Preserve original file metadata
+            "path": file_info["path"],
+            "name": file_info["name"],
+            "suffix": file_info["suffix"],
+            "category": file_info["category"],
+            "size": file_info["size"],
+            "modified": file_info["modified"],
+            "mime_type": file_info["mime_type"],
+            # Analysis results
             "content_analysis": "pending",
             "ai_insights": {},
         }
