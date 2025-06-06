@@ -11,8 +11,20 @@ import fnmatch
 
 
 class FileScanner:
-    def __init__(self, root_path: Path):
-        self.root_path = Path(root_path)
+    def __init__(self, root_dir: str):
+        """
+        Initialize the FileScanner with a root directory.
+
+        Args:
+            root_dir: The root directory to be scanned.
+
+        Raises:
+            FileNotFoundError: If the specified root directory does not exist.
+        """
+        if not Path(root_dir).exists():
+            raise FileNotFoundError(f"Path not found: {root_dir}")
+        
+        self.root_path = Path(root_dir)
 
         self.ignore_dirs = {
             # Version control
@@ -63,13 +75,7 @@ class FileScanner:
 
         Returns:
             A list of dictionaries containing metadata for each discovered file.
-
-        Raises:
-            FileNotFoundError: If the specified root path does not exist.
         """
-        if not self.root_path.exists():
-            raise FileNotFoundError(f"Path not found: {self.root_path.resolve()}")
-
         items_to_organize = []
 
         for item in self.root_path.rglob("*"):
