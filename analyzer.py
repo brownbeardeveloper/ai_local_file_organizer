@@ -13,7 +13,7 @@ from ollama_analyzer import OllamaAnalyzer
 from ocr_analyzer import OCRAnalyzer
 import torch
 
-# Configure PyTorch for Mac M1 optimization
+# Configure PyTorch for Mac optimization
 if torch.backends.mps.is_available():
     torch.backends.mps.is_built()
     print("Mac M1 GPU (MPS) acceleration available")
@@ -26,21 +26,15 @@ class FileAnalyzer:
 
     def __init__(
         self,
-        large_file_threshold: int = 100 * 1024 * 1024,
+        large_file_threshold: int = 100 * 1024 * 1024,  # 100MB
         yolo_analyzer: Optional[YOLOAnalyzer] = None,
         ollama_analyzer: Optional[OllamaAnalyzer] = None,
         ocr_analyzer: Optional[OCRAnalyzer] = None,
-        # Backward compatibility - create default analyzers if not provided
-        yolo_model_name: str = "yolo11n.pt",
-        ollama_model_name: str = "qwen3:4b",
-        ocr_model_name: str = "paddleocr",
     ):
         self.large_file_threshold = large_file_threshold
-
-        # Use provided analyzers or create default ones
-        self.yolo_analyzer = yolo_analyzer or YOLOAnalyzer(yolo_model_name)
-        self.ollama_analyzer = ollama_analyzer or OllamaAnalyzer(ollama_model_name)
-        self.ocr_analyzer = ocr_analyzer or OCRAnalyzer(ocr_model_name)
+        self.yolo_analyzer = yolo_analyzer
+        self.ollama_analyzer = ollama_analyzer
+        self.ocr_analyzer = ocr_analyzer
 
     def analyze(self, file_info: Dict) -> Dict[str, Any]:
         """Analyze file content and return insights about what's inside"""

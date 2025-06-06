@@ -58,10 +58,19 @@ class FileScanner:
         }
 
     def scan(self) -> List[Dict[str, Any]]:
-        """Scan the directory and return files with metadata"""
-        items_to_organize = []
+        """
+        Recursively scan the target directory and collect metadata for all files.
 
-        print(f"Scanning directory: {self.root_path}")
+        Returns:
+            A list of dictionaries containing metadata for each discovered file.
+
+        Raises:
+            FileNotFoundError: If the specified root path does not exist.
+        """
+        if not self.root_path.exists():
+            raise FileNotFoundError(f"Path not found: {self.root_path.resolve()}")
+
+        items_to_organize = []
 
         for item in self.root_path.rglob("*"):
             try:

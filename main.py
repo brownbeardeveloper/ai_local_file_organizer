@@ -14,7 +14,7 @@ def main():
     organized_files_path = root_path / "organized_files"
 
     scanner = FileScanner(unstructed_files_path)
-    analyzer = FileAnalyzer(ollama_model_name="qwen3:4b")
+    analyzer = FileAnalyzer()
     suggester = PathSuggester(organized_files_path)
     mover = FileMover()
 
