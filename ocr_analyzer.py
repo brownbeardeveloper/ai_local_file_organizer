@@ -6,7 +6,7 @@ Optimized for memory-constrained environments
 
 import io
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from pathlib import Path
 import fitz  # PyMuPDF
 from PIL import Image
@@ -32,13 +32,25 @@ class OCRAnalyzer(AIModel):
         max_pages_per_pdf: int = 2,
     ):
         """
-        Initialize OCR analyzer with memory optimization
+        Initialize OCR analyzer with memory optimization.
 
         Args:
             language: Language code for text recognition (default: "en")
-            confidence_threshold: Minimum confidence for text extraction (0.0-1.0)
-            max_pages_per_pdf: Max PDF pages to process for memory efficiency
+            confidence_threshold: Minimum confidence for text extraction (0.5-1.0)
+            max_pages_per_pdf: Max number of PDF pages to process (must be ≥ 1)
+
+        Raises:
+            ValueError: If confidence_threshold is not between 0.5 and 1.0
+            ValueError: If max_pages_per_pdf is less than 1
         """
+
+        if not (0.5 <= confidence_threshold <= 1.0):
+            raise ValueError("confidence_threshold must be between 0.5 and 1.0")
+        
+        if max_pages_per_pdf < 1:
+            raise ValueError("max_pages_per_pdf must be at least 1")
+
+        
         self.language = language
         self.confidence_threshold = confidence_threshold
         self.max_pages_per_pdf = max_pages_per_pdf
@@ -56,21 +68,43 @@ class OCRAnalyzer(AIModel):
             use_tensorrt=True,  # GPU optimization
         )
 
-    def extract_text_from_image(self, image_path: Path) -> Dict[str, Any]:
-        """Extract text from image file using OCR"""
+    def extract_text_from_image(self, image_path: str) -> Dict[str, Any]:
+        """
+        Extract text from an image file using OCR.
+
+        Args:
+            image_path: Path to the image file (as a string).
+
+        Returns:
+            A dictionary containing extracted text and associated metadata.
+
+        Raises:
+            FileNotFoundError: If the specified image file does not exist.
+        """
+        if not Path(image_path).exists():
+            raise FileNotFoundError(f"Path not found: {image_path}")
+        
         results = self.model.ocr(str(image_path), cls=True)
         return self._process_ocr_results(results, "image")
 
     def extract_text_from_pdf(
-        self, pdf_path: Path, max_pages: Optional[int] = None
+        self, pdf_path: str
     ) -> Dict[str, Any]:
         """
-        Extract text from PDF using OCR
+        Extract text from a PDF using OCR.
 
         Args:
-            pdf_path: Path to PDF file
-            max_pages: Override default page limit if needed
+            pdf_path: Path to the PDF file.
+
+        Returns:
+            A dictionary containing extracted text and associated metadata.
+
+        Raises:
+            FileNotFoundError: If the specified PDF file does not exist.
         """
+        if not Path(pdf_path).exists():
+            raise FileNotFoundError(f"Path not found: {pdf_path}")
+
         doc = fitz.open(pdf_path)
         text_results = []
         confidences = []
