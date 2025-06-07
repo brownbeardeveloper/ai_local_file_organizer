@@ -12,6 +12,7 @@ from yolo_analyzer import YOLOAnalyzer
 from ollama_analyzer import OllamaAnalyzer
 from ocr_analyzer import OCRAnalyzer
 import torch
+import PyPDF2
 
 # Configure PyTorch for Mac optimization
 if torch.backends.mps.is_available():
@@ -208,56 +209,74 @@ class FileAnalyzer:
         except Exception:
             pass
 
+    def _extract_pdf_text(self, path: Path) -> str:
+        """Extract text from all pages of a PDF"""
+        with open(path, "rb") as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+
+            if pdf_reader.is_encrypted:
+                raise RuntimeError("Cannot extract text from encrypted PDF")
+
+            if len(pdf_reader.pages) == 0:
+                raise RuntimeError("PDF file contains no pages")
+
+            text_content = ""
+            for page in pdf_reader.pages:
+                text_content += page.extract_text()
+
+            return text_content
+
     def _analyze_pdf_content(self, path: Path) -> Dict[str, Any]:
-        """Analyze PDF content with OCR fallback for scanned documents"""
-        try:
-            import PyPDF2
+        """Analyze PDF content using text extraction and OCR fallback for scanned documents"""
+        # Extract text using the dedicated method
+        pdf_text = self._extract_pdf_text(path)
 
-            with open(path, "rb") as file:
-                pdf_reader = PyPDF2.PdfReader(file)
+        info = {}
 
-                info = {
-                    "pages": len(pdf_reader.pages),
-                    "encrypted": pdf_reader.is_encrypted,
-                }
+        if len(pdf_text.strip()) > 100:
+            self._analyze_pdf_text(pdf_text, info)
+        else:
+            self._analyze_scanned_pdf(path, info)
 
-                # Try to extract some text for content analysis
-                if len(pdf_reader.pages) > 0 and not pdf_reader.is_encrypted:
-                    first_page = pdf_reader.pages[0].extract_text()
+        return info
 
-                    if len(first_page) > 100:
-                        # Use Ollama to analyze PDF content
-                        if self.ollama_analyzer and self.ollama_analyzer.is_available():
-                            content_analysis = self.ollama_analyzer.analyze_text(
-                                first_page[:1000], "document"
-                            )
-                            info.update(content_analysis)
-                    else:
-                        # PDF might be scanned - try OCR
-                        if self.ocr_analyzer:
-                            ocr_result = self.ocr_analyzer.extract_text_from_pdf(path)
-                        else:
-                            ocr_result = {"text": "", "confidence": 0, "engine": "none"}
-                        if ocr_result["text"] and len(ocr_result["text"]) > 50:
-                            if (
-                                self.ollama_analyzer
-                                and self.ollama_analyzer.is_available()
-                            ):
-                                content_analysis = self.ollama_analyzer.analyze_text(
-                                    ocr_result["text"][:1000], "document"
-                                )
-                                info.update(content_analysis)
-                                info["ocr_extracted"] = True
-                                info["ocr_confidence"] = ocr_result["confidence"]
-                                info["ocr_engine"] = ocr_result["engine"]
-                            else:
-                                info["content"] = "scanned_document"
-                        else:
-                            info["content"] = "image_based_pdf"
+    def _analyze_pdf_text(self, pdf_text: str, info: Dict[str, Any]) -> None:
+        """Analyze extracted PDF text content using AI"""
+        if not self.ollama_analyzer:
+            raise RuntimeError("Ollama analyzer not available for PDF text analysis")
 
-                return info
-        except:
-            return {"content": "pdf_analysis_failed"}
+        if not self.ollama_analyzer.is_available():
+            raise RuntimeError("Ollama analyzer is not ready for PDF text analysis")
+
+        content_analysis = self.ollama_analyzer.analyze_text(
+            pdf_text[:1000], "document"
+        )
+        info.update(content_analysis)
+
+    def _analyze_scanned_pdf(self, path: Path, info: Dict[str, Any]) -> None:
+        """Analyze scanned PDF using OCR extraction"""
+        if not self.ocr_analyzer:
+            raise RuntimeError("OCR analyzer not available for scanned PDF analysis")
+
+        ocr_result = self.ocr_analyzer.extract_text_from_pdf(path)
+
+        if not ocr_result["text"] or len(ocr_result["text"]) <= 50:
+            raise RuntimeError("OCR failed to extract sufficient text from PDF")
+
+        info["ocr_extracted"] = True
+        info["ocr_confidence"] = ocr_result["confidence"]
+        info["ocr_engine"] = ocr_result["engine"]
+
+        if not self.ollama_analyzer:
+            raise RuntimeError("Ollama analyzer not available for OCR text analysis")
+
+        if not self.ollama_analyzer.is_available():
+            raise RuntimeError("Ollama analyzer is not ready for OCR text analysis")
+
+        content_analysis = self.ollama_analyzer.analyze_text(
+            ocr_result["text"][:1000], "document"
+        )
+        info.update(content_analysis)
 
     def _analyze_text_content(self, path: Path) -> Dict[str, Any]:
         """Analyze text file content"""
@@ -289,7 +308,7 @@ class FileAnalyzer:
                     info.update(ai_analysis)
 
                 return info
-        except:
+        except (OSError, UnicodeDecodeError, ValueError):
             return {"content": "text_analysis_failed"}
 
     def _analyze_csv_content(self, path: Path) -> Dict[str, Any]:
@@ -321,7 +340,8 @@ class FileAnalyzer:
                 info["content"] = "csv_data"
 
             return info
-        except:
+
+        except (OSError, UnicodeDecodeError, ValueError):
             return {"content": "csv_analysis_failed"}
 
     def _analyze_code_content(self, path: Path) -> Dict[str, Any]:
@@ -356,7 +376,7 @@ class FileAnalyzer:
                 info["content"] = "code"
 
             return info
-        except:
+        except (OSError, UnicodeDecodeError, ValueError):
             return {
                 "content": "code",
                 "language": language_map.get(suffix, "unknown"),
@@ -400,5 +420,5 @@ class FileAnalyzer:
                     info.update(ai_analysis)
 
             return info
-        except:
+        except (OSError, ImportError, ValueError):
             return {"content": "word_analysis_failed"}
