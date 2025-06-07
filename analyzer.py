@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 from datetime import datetime
 import exifread
-from PIL import Image
 from yolo_analyzer import YOLOAnalyzer
 from ollama_analyzer import OllamaAnalyzer
 from ocr_analyzer import OCRAnalyzer
 import torch
 import PyPDF2
+from docx import Document
 
 # Configure PyTorch for Mac optimization
 if torch.backends.mps.is_available():
@@ -61,12 +61,33 @@ class FileAnalyzer:
         self.large_file_threshold = (
             large_file_threshold_mb * 1024 * 1024
         )  # store internally in bytes
-        self.yolo_analyzer = yolo_analyzer
-        self.ollama_analyzer = ollama_analyzer
-        self.ocr_analyzer = ocr_analyzer
+        self.yolo_analyzer = yolo_analyzer or YOLOAnalyzer()
+        self.ollama_analyzer = ollama_analyzer or OllamaAnalyzer()
+        self.ocr_analyzer = ocr_analyzer or OCRAnalyzer()
 
     def analyze(self, file_info: Dict) -> Dict[str, Any]:
-        """Analyze file content and return insights about what's inside"""
+        """Analyze file content and return insights about what's inside.
+
+        Args:
+            file_info: Dictionary containing file metadata with keys: path, name, suffix,
+                      category, size, modified, mime_type.
+
+        Returns:
+            Dict containing original file metadata plus analysis results and AI insights.
+
+        Raises:
+            TypeError: If file_info["path"] is not a string or path-like object.
+            ValueError: If the path string contains null bytes.
+            FileNotFoundError: If image, document, or PDF files don't exist.
+            PermissionError: If no read permissions for the file.
+            OSError: General I/O errors (disk issues, network problems).
+            RuntimeError: If YOLO model unavailable, Ollama service not running,
+                         encrypted/empty PDFs, or OCR extraction failures.
+            UnicodeDecodeError: If text files have encoding issues.
+            MemoryError: If large files exceed system memory on constrained systems.
+            ConnectionError: If network issues occur with Ollama service.
+            TimeoutError: If Ollama requests timeout.
+        """
         file_path = Path(file_info["path"])
 
         # Start with file metadata from scanner and add analysis results
@@ -88,7 +109,7 @@ class FileAnalyzer:
         file_category = file_info.get("category", "other")
 
         if file_category == "image":
-            analysis.update(self._analyze_image_content(file_path))
+            analysis.update(self._analyze_image_content(file_info["path"]))
         elif file_category == "document":
             analysis.update(self._analyze_document_content(file_path, file_info))
         elif file_category == "video":
@@ -100,25 +121,35 @@ class FileAnalyzer:
 
         return analysis
 
-    def _analyze_image_content(self, path: Path) -> Dict[str, Any]:
-        """Analyze what's actually IN the image"""
+    def _analyze_image_content(self, path: str) -> Dict[str, Any]:
+        """Analyze image content using YOLO object detection and EXIF metadata extraction.
+
+        Args:
+            path: String path to the image file.
+
+        Returns:
+            Dict containing analysis results and AI insights.
+
+        Raises:
+            RuntimeError: If YOLO analyzer is not available for image object detection.
+        """
         result = {
             "content_analysis": "image_analyzed",
             "ai_insights": {},
         }
 
         try:
-            # Get image metadata first
-            image = Image.open(path).convert("RGB")
-            width, height = image.size
-
-            result["ai_insights"]["dimensions"] = f"{width}x{height}"
-
             # YOLO analysis for object detection
-            if self.yolo_analyzer and self.yolo_analyzer.is_available():
-                detected_objects = self.yolo_analyzer.detect_objects(image)
-                if detected_objects:
-                    result["ai_insights"].update(detected_objects)
+            if not self.yolo_analyzer:
+                raise RuntimeError(
+                    "YOLO analyzer not available for image object detection"
+                )
+
+            detected_objects = self.yolo_analyzer.detect_objects(path)
+            if detected_objects:
+                result["ai_insights"].update(detected_objects)
+            else:
+                result["ai_insights"]["primary_object"] = "no_objects_detected"
 
             # Extract EXIF for photo metadata
             self._extract_photo_context(path, result)
@@ -183,7 +214,7 @@ class FileAnalyzer:
             "ai_insights": {"content": "audio_analysis_not_implemented"},
         }
 
-    def _extract_photo_context(self, path: Path, result: Dict):
+    def _extract_photo_context(self, path: str, result: Dict):
         """Extract photo metadata for context"""
         try:
             with open(path, "rb") as f:
@@ -245,9 +276,6 @@ class FileAnalyzer:
         if not self.ollama_analyzer:
             raise RuntimeError("Ollama analyzer not available for PDF text analysis")
 
-        if not self.ollama_analyzer.is_available():
-            raise RuntimeError("Ollama analyzer is not ready for PDF text analysis")
-
         content_analysis = self.ollama_analyzer.analyze_text(
             pdf_text[:1000], "document"
         )
@@ -269,9 +297,6 @@ class FileAnalyzer:
 
         if not self.ollama_analyzer:
             raise RuntimeError("Ollama analyzer not available for OCR text analysis")
-
-        if not self.ollama_analyzer.is_available():
-            raise RuntimeError("Ollama analyzer is not ready for OCR text analysis")
 
         content_analysis = self.ollama_analyzer.analyze_text(
             ocr_result["text"][:1000], "document"
@@ -299,11 +324,7 @@ class FileAnalyzer:
                 }
 
                 # AI content analysis
-                if (
-                    self.ollama_analyzer
-                    and self.ollama_analyzer.is_available()
-                    and len(content.strip()) > 50
-                ):
+                if self.ollama_analyzer and len(content.strip()) > 50:
                     ai_analysis = self.ollama_analyzer.analyze_text(content, "document")
                     info.update(ai_analysis)
 
@@ -329,11 +350,7 @@ class FileAnalyzer:
                 "has_header": "," in lines[0] if lines else False,
             }
 
-            if (
-                self.ollama_analyzer
-                and self.ollama_analyzer.is_available()
-                and len(content.strip()) > 50
-            ):
+            if self.ollama_analyzer and len(content.strip()) > 50:
                 ai_analysis = self.ollama_analyzer.analyze_text(content, "csv")
                 info.update(ai_analysis)
             else:
@@ -365,11 +382,7 @@ class FileAnalyzer:
             }
 
             # AI analysis for scripts to understand what they do
-            if (
-                self.ollama_analyzer
-                and self.ollama_analyzer.is_available()
-                and len(content.strip()) > 20
-            ):
+            if self.ollama_analyzer and len(content.strip()) > 20:
                 ai_analysis = self.ollama_analyzer.analyze_text(content, "script")
                 info.update(ai_analysis)
             else:
@@ -386,8 +399,6 @@ class FileAnalyzer:
     def _analyze_word_content(self, path: Path) -> Dict[str, Any]:
         """Analyze Word document content"""
         try:
-            from docx import Document
-
             doc = Document(path)
 
             # Count content
@@ -403,11 +414,7 @@ class FileAnalyzer:
             }
 
             # Get a sample of text for AI analysis
-            if (
-                self.ollama_analyzer
-                and self.ollama_analyzer.is_available()
-                and word_count > 0
-            ):
+            if self.ollama_analyzer and word_count > 0:
                 sample_text = ""
                 for p in doc.paragraphs[:5]:  # First 5 paragraphs
                     if p.text.strip():

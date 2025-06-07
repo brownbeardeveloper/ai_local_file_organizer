@@ -31,7 +31,6 @@ class OllamaAnalyzer(AIModel):
 
         if self.model_name in available:
             self.model = self.model_name
-            print(f"Using Ollama model: {self.model}")
         else:
             raise ValueError(
                 f"Ollama model '{self.model_name}' not found. Available: {sorted(available)}"
