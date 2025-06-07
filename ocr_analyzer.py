@@ -21,7 +21,7 @@ class OCRAnalyzer(AIModel):
     Features:
     - Memory-efficient processing for resource-constrained systems
     - Configurable confidence thresholds and batch processing
-    - Multi-language support with Swedish prioritization
+    - Multi-language support via PaddleOCR
     - Fail-fast error handling for production reliability
     """
 
@@ -46,11 +46,10 @@ class OCRAnalyzer(AIModel):
 
         if not (0.5 <= confidence_threshold <= 1.0):
             raise ValueError("confidence_threshold must be between 0.5 and 1.0")
-        
+
         if max_pages_per_pdf < 1:
             raise ValueError("max_pages_per_pdf must be at least 1")
 
-        
         self.language = language
         self.confidence_threshold = confidence_threshold
         self.max_pages_per_pdf = max_pages_per_pdf
@@ -83,13 +82,11 @@ class OCRAnalyzer(AIModel):
         """
         if not Path(image_path).exists():
             raise FileNotFoundError(f"Path not found: {image_path}")
-        
+
         results = self.model.ocr(str(image_path), cls=True)
         return self._process_ocr_results(results, "image")
 
-    def extract_text_from_pdf(
-        self, pdf_path: str
-    ) -> Dict[str, Any]:
+    def extract_text_from_pdf(self, pdf_path: str) -> Dict[str, Any]:
         """
         Extract text from a PDF using OCR.
 

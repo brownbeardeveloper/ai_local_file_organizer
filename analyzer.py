@@ -16,22 +16,50 @@ import torch
 # Configure PyTorch for Mac optimization
 if torch.backends.mps.is_available():
     torch.backends.mps.is_built()
-    print("Mac M1 GPU (MPS) acceleration available")
+    print("MPS acceleration available")
 else:
     print("MPS not available, using CPU")
 
 
 class FileAnalyzer:
-    """Orchestrates file analysis using specialized AI analyzers"""
+    """
+    Analyzes files using specialized AI analyzers for images, documents, audio, and video.
+
+    This class orchestrates the use of YOLO (object detection), Ollama (text/content analysis), and OCR (optical character recognition) analyzers
+    to extract metadata, classify content, and provide AI-driven insights for a wide range of file types.
+
+    Features:
+        - Modular analysis for images, documents, audio, and video files
+        - Integrates multiple AI models for deep content understanding
+        - Handles large files, empty files, and various edge cases
+        - Returns structured metadata and AI insights for downstream use
+    """
 
     def __init__(
         self,
-        large_file_threshold: int = 100 * 1024 * 1024,  # 100MB
+        large_file_threshold_mb: int = 100,  # in MB
         yolo_analyzer: Optional[YOLOAnalyzer] = None,
         ollama_analyzer: Optional[OllamaAnalyzer] = None,
         ocr_analyzer: Optional[OCRAnalyzer] = None,
     ):
-        self.large_file_threshold = large_file_threshold
+        """
+        Initialize the analyzer with optional AI components.
+
+        Args:
+            large_file_threshold_mb: File size threshold in MB (1-300). Files larger than this will be treated differently.
+            yolo_analyzer: Optional YOLO object detection analyzer.
+            ollama_analyzer: Optional language model analyzer.
+            ocr_analyzer: Optional OCR analyzer.
+
+        Raises:
+            ValueError: If large_file_threshold_mb is not in the range 1-300.
+        """
+        if not (1 <= large_file_threshold_mb <= 300):
+            raise ValueError("large_file_threshold_mb must be between 1 and 300 MB")
+
+        self.large_file_threshold = (
+            large_file_threshold_mb * 1024 * 1024
+        )  # store internally in bytes
         self.yolo_analyzer = yolo_analyzer
         self.ollama_analyzer = ollama_analyzer
         self.ocr_analyzer = ocr_analyzer
@@ -82,25 +110,11 @@ class FileAnalyzer:
             # Get image metadata first
             image = Image.open(path).convert("RGB")
             width, height = image.size
-            aspect_ratio = width / height
 
-            # Determine image characteristics
-            if aspect_ratio > 1.5:
-                image_type = "panoramic"
-            elif abs(aspect_ratio - 1.0) < 0.1:
-                image_type = "square"
-            elif width < 800 or height < 600:
-                image_type = "small_image"
-            elif width > 3000 or height > 3000:
-                image_type = "high_resolution"
-            else:
-                image_type = "standard"
-
-            result["ai_insights"]["image_type"] = image_type
             result["ai_insights"]["dimensions"] = f"{width}x{height}"
 
             # YOLO analysis for object detection
-            if self.yolo_analyzer.is_available():
+            if self.yolo_analyzer and self.yolo_analyzer.is_available():
                 detected_objects = self.yolo_analyzer.detect_objects(image)
                 if detected_objects:
                     result["ai_insights"].update(detected_objects)
@@ -129,8 +143,8 @@ class FileAnalyzer:
                 result["ai_insights"]["content"] = "empty_file"
                 return result
 
-            # Skip very large files (>5MB) for content analysis
-            if file_size > 5 * 1024 * 1024:
+            # Skip very large files for content analysis
+            if file_size > self.large_file_threshold:
                 result["ai_insights"]["content"] = "large_file_skipped"
                 return result
 
@@ -213,16 +227,22 @@ class FileAnalyzer:
 
                     if len(first_page) > 100:
                         # Use Ollama to analyze PDF content
-                        if self.ollama_analyzer.is_available():
+                        if self.ollama_analyzer and self.ollama_analyzer.is_available():
                             content_analysis = self.ollama_analyzer.analyze_text(
                                 first_page[:1000], "document"
                             )
                             info.update(content_analysis)
                     else:
                         # PDF might be scanned - try OCR
-                        ocr_result = self.ocr_analyzer.extract_text_from_pdf(path)
+                        if self.ocr_analyzer:
+                            ocr_result = self.ocr_analyzer.extract_text_from_pdf(path)
+                        else:
+                            ocr_result = {"text": "", "confidence": 0, "engine": "none"}
                         if ocr_result["text"] and len(ocr_result["text"]) > 50:
-                            if self.ollama_analyzer.is_available():
+                            if (
+                                self.ollama_analyzer
+                                and self.ollama_analyzer.is_available()
+                            ):
                                 content_analysis = self.ollama_analyzer.analyze_text(
                                     ocr_result["text"][:1000], "document"
                                 )
@@ -260,7 +280,11 @@ class FileAnalyzer:
                 }
 
                 # AI content analysis
-                if self.ollama_analyzer.is_available() and len(content.strip()) > 50:
+                if (
+                    self.ollama_analyzer
+                    and self.ollama_analyzer.is_available()
+                    and len(content.strip()) > 50
+                ):
                     ai_analysis = self.ollama_analyzer.analyze_text(content, "document")
                     info.update(ai_analysis)
 
@@ -286,7 +310,11 @@ class FileAnalyzer:
                 "has_header": "," in lines[0] if lines else False,
             }
 
-            if self.ollama_analyzer.is_available() and len(content.strip()) > 50:
+            if (
+                self.ollama_analyzer
+                and self.ollama_analyzer.is_available()
+                and len(content.strip()) > 50
+            ):
                 ai_analysis = self.ollama_analyzer.analyze_text(content, "csv")
                 info.update(ai_analysis)
             else:
@@ -317,7 +345,11 @@ class FileAnalyzer:
             }
 
             # AI analysis for scripts to understand what they do
-            if self.ollama_analyzer.is_available() and len(content.strip()) > 20:
+            if (
+                self.ollama_analyzer
+                and self.ollama_analyzer.is_available()
+                and len(content.strip()) > 20
+            ):
                 ai_analysis = self.ollama_analyzer.analyze_text(content, "script")
                 info.update(ai_analysis)
             else:
@@ -351,7 +383,11 @@ class FileAnalyzer:
             }
 
             # Get a sample of text for AI analysis
-            if self.ollama_analyzer.is_available() and word_count > 0:
+            if (
+                self.ollama_analyzer
+                and self.ollama_analyzer.is_available()
+                and word_count > 0
+            ):
                 sample_text = ""
                 for p in doc.paragraphs[:5]:  # First 5 paragraphs
                     if p.text.strip():
