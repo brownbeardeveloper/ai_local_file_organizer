@@ -4,7 +4,7 @@
 from pathlib import Path
 from scanner import FileScanner
 from analyzer import FileAnalyzer
-from suggester import PathSuggester
+from openai_suggester import OpenAIPathPlanner
 from mover import FileMover
 
 
@@ -15,7 +15,7 @@ def main():
 
     scanner = FileScanner(unstructed_files_path)
     analyzer = FileAnalyzer()
-    suggester = PathSuggester(organized_files_path)
+    pathplanner = OpenAIPathPlanner()
     mover = FileMover()
 
     print("Scanning files...")
@@ -25,7 +25,7 @@ def main():
     moved_count = 0
     for file_info in files:
         analysis = analyzer.analyze(file_info)
-        new_path = suggester.suggest_path(analysis)
+        new_path = pathplanner.suggest_paths([analysis])
 
         if new_path:
             try:

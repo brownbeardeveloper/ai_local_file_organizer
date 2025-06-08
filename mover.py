@@ -17,15 +17,68 @@ class FileMover:
         logs_dir = Path("logs")
         logs_dir.mkdir(exist_ok=True)
         self.log_file = logs_dir / "file_organizer.json"
+
+        # Directory structure mapping
+        self.sub_dirs_map = {
+            "documents": ["pdf", "word", "excel"],
+            "finance": ["invoices", "receipts"],
+            "work": ["projects", "other"],
+            "studies": ["notes", "assignments"],
+            "health": ["training", "insurance"],
+            "photos": ["camera", "phone", "screenshots"],
+            "software": ["installers", "configs"],
+            "archives": ["zip", "rar"],
+            "hidden": [],
+            "large": [],
+            "misc": [],
+            "dev": ["python", "javascript", "java", "other"],
+        }
+
         self._load_log()
+        self._create_directory_structure()
 
     def organize_file(self, file_analysis: Dict, suggested_path: Path) -> bool:
-        """Move file based on suggester recommendation"""
+        """Move file based on pathplanner recommendation"""
         if not suggested_path:
             return False
 
         source_path = Path(file_analysis["path"])
+
+        # Validate category
+        self._validate_category(suggested_path)
+
         return self.move(source_path, suggested_path)
+
+    def _create_directory_structure(self):
+        """Create the required directory structure"""
+        for main_category, sub_categories in self.sub_dirs_map.items():
+            main_path = Path(main_category)
+            main_path.mkdir(exist_ok=True)
+
+            for sub_category in sub_categories:
+                sub_path = main_path / sub_category
+                sub_path.mkdir(exist_ok=True)
+
+    def _validate_category(self, suggested_path: Path):
+        """Validate that the suggested path uses a valid category"""
+        if not suggested_path.parts:
+            raise RuntimeError("Suggested path is empty")
+
+        main_category = suggested_path.parts[0]
+        if main_category not in self.sub_dirs_map:
+            valid_categories = list(self.sub_dirs_map.keys())
+            raise RuntimeError(
+                f"Invalid category '{main_category}'. Valid categories: {valid_categories}"
+            )
+
+        # Check subcategory if it exists
+        if len(suggested_path.parts) > 1:
+            sub_category = suggested_path.parts[1]
+            valid_sub_categories = self.sub_dirs_map[main_category]
+            if valid_sub_categories and sub_category not in valid_sub_categories:
+                raise RuntimeError(
+                    f"Invalid subcategory '{sub_category}' for category '{main_category}'. Valid subcategories: {valid_sub_categories}"
+                )
 
     def move(self, source: Path, destination: Path) -> bool:
         """Move a file or directory to a new location"""
@@ -66,25 +119,29 @@ class FileMover:
             raise Exception(f"Failed to move {source} to {destination}: {str(e)}")
 
     def _handle_conflicts(self, destination: Path) -> Path:
-        """Add sequential numbers to all files (001, 002, etc.)"""
-        # For files, add 3-digit number before extension
+        """Add sequential numbers to files (person2.jpg, person3.jpg, etc.)"""
+        if not destination.exists():
+            return destination
+
+        counter = 2
+
+        # For files, add number before extension
         if destination.is_file() or "." in destination.name:
             stem = destination.stem
             suffix = destination.suffix
             parent = destination.parent
 
-            counter = 1
             while True:
-                new_name = f"{stem}_{counter:03d}{suffix}"
+                new_name = f"{stem}{counter}{suffix}"
                 new_path = parent / new_name
                 if not new_path.exists():
                     return new_path
                 counter += 1
         else:
             # For directories
-            counter = 1
+
             while True:
-                new_path = destination.parent / f"{destination.name}_{counter:03d}"
+                new_path = destination.parent / f"{destination.name}{counter}"
                 if not new_path.exists():
                     return new_path
                 counter += 1

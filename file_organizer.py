@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple, Optional
 
 from scanner import FileScanner
 from analyzer import FileAnalyzer
-from suggester import PathSuggester
+from openai_suggester import OpenAIPathPlanner
 from mover import FileMover
 
 
@@ -27,7 +27,7 @@ class FileOrganizer:
         self.data_path = data_path
         self.scanner = FileScanner(root_path)
         self.analyzer = FileAnalyzer()
-        self.suggester = PathSuggester(data_path)
+        self.pathplanner = OpenAIPathPlanner()
         self.mover = FileMover()
 
         # Create base directories
