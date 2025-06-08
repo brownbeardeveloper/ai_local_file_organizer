@@ -10,7 +10,6 @@ PyMuPDF>=1.23.0             # PDF to image conversion
 # OCR & Vision (Required)
 paddlepaddle>=2.5.0         # PaddleOCR backend (Required)
 paddleocr>=2.7.0            # Fast OCR engine (Primary)
-easyocr>=1.7.0              # Multi-language OCR (Fallback)
 pytesseract>=0.3.10         # Tesseract OCR wrapper (Fallback)
 Pillow>=10.0.0              # Image processing (Required)
 numpy>=1.21.0               # Array processing for PaddleOCR

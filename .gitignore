@@ -43,6 +43,9 @@ checkpoints/
 # Ollama
 .ollama/
 
+# YOLO model
+*.pt
+
 # PyTorch
 lightning_logs/
 
