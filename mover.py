@@ -1,22 +1,48 @@
 """
-File Mover Module
-Safely moves files and directories with logging
+File Organizer Module
+Safely copies or moves files and directories for organization
 """
 
 import shutil
-import json
+import os
 from pathlib import Path
-from datetime import datetime
-from typing import List, Dict
 import hashlib
 
 
 class FileMover:
-    def __init__(self):
-        self.move_log = []
-        logs_dir = Path("logs")
-        logs_dir.mkdir(exist_ok=True)
-        self.log_file = logs_dir / "file_organizer.json"
+    """
+    File organization class that safely copies or moves files to structured directories.
+
+    By default, files are copied (not moved) to preserve originals and allow safe testing
+    of organization schemes. This non-destructive approach is recommended for most use cases.
+    """
+
+    def __init__(self, root_dir: str = ".", copy_mode: bool = True):
+        """
+        Initialize the FileMover with specified root directory and operation mode.
+
+        Args:
+            root_dir: Directory where organized files will be placed
+            copy_mode: If True (default), copy files preserving originals.
+                      If False, move files permanently (use with caution).
+
+        Raises:
+            FileNotFoundError: If root directory doesn't exist
+            NotADirectoryError: If root_dir is not a directory
+            PermissionError: If root directory is not writable
+        """
+        self.root_dir = Path(root_dir).resolve()
+        self.copy_mode = copy_mode  # True for copy, False for move
+
+        # Validate root directory exists
+        if not self.root_dir.exists():
+            raise FileNotFoundError(f"Root directory does not exist: {self.root_dir}")
+
+        if not self.root_dir.is_dir():
+            raise NotADirectoryError(f"Root path is not a directory: {self.root_dir}")
+
+        if not os.access(self.root_dir, os.W_OK):
+            raise PermissionError(f"Root directory is not writable: {self.root_dir}")
 
         # Directory structure mapping
         self.sub_dirs_map = {
@@ -34,30 +60,60 @@ class FileMover:
             "dev": ["python", "javascript", "java", "other"],
         }
 
-        self._load_log()
         self._create_directory_structure()
 
-    def organize_file(self, file_analysis: Dict, suggested_path: Path) -> bool:
-        """Move file based on pathplanner recommendation"""
-        if not suggested_path:
-            return False
+    def organize_file(self, source_file_path: str, suggested_path: str) -> str:
+        """Copy or move file based on pathplanner recommendation
 
-        source_path = Path(file_analysis["path"])
+        Returns:
+            str: The actual final destination path where the file was placed
+        """
+        if not source_file_path:
+            raise ValueError("Source file path cannot be empty")
+
+        if not suggested_path:
+            raise ValueError("Suggested path cannot be empty")
+
+        source_path = Path(source_file_path)
+        suggested_path_obj = Path(suggested_path)
+
+        # Validate source file exists
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file does not exist: {source_path}")
+
+        # Validate source file permissions
+        if not os.access(source_path, os.R_OK):
+            raise PermissionError(f"Source file is not readable: {source_path}")
+
+        # Validate source directory permissions (needed only for move operation)
+        if not self.copy_mode and not os.access(source_path.parent, os.W_OK):
+            raise PermissionError(
+                f"Source directory is not writable: {source_path.parent}"
+            )
 
         # Validate category
-        self._validate_category(suggested_path)
+        self._validate_category(suggested_path_obj)
 
-        return self.move(source_path, suggested_path)
+        # Validate file extension hasn't changed
+        self._validate_extension(source_path, suggested_path_obj)
+
+        # Convert suggested_path to be relative to root_dir
+        destination_path = self.root_dir / suggested_path_obj
+
+        if self.copy_mode:
+            return self.copy(str(source_path), str(destination_path))
+        else:
+            return self.move(str(source_path), str(destination_path))
 
     def _create_directory_structure(self):
-        """Create the required directory structure"""
+        """Create the required directory structure in root_dir"""
         for main_category, sub_categories in self.sub_dirs_map.items():
-            main_path = Path(main_category)
-            main_path.mkdir(exist_ok=True)
+            main_path = self.root_dir / main_category
+            main_path.mkdir(parents=True, exist_ok=True)
 
             for sub_category in sub_categories:
                 sub_path = main_path / sub_category
-                sub_path.mkdir(exist_ok=True)
+                sub_path.mkdir(parents=True, exist_ok=True)
 
     def _validate_category(self, suggested_path: Path):
         """Validate that the suggested path uses a valid category"""
@@ -80,43 +136,92 @@ class FileMover:
                     f"Invalid subcategory '{sub_category}' for category '{main_category}'. Valid subcategories: {valid_sub_categories}"
                 )
 
-    def move(self, source: Path, destination: Path) -> bool:
-        """Move a file or directory to a new location"""
+    def _validate_extension(self, source_path: Path, suggested_path: Path):
+        """Validate that the file extension is not changed during organization"""
+        source_suffix = source_path.suffix.lower()
+        suggested_suffix = suggested_path.suffix.lower()
+
+        if source_suffix != suggested_suffix:
+            raise ValueError(
+                f"File extension cannot be changed during organization. "
+                f"Source: '{source_suffix}', Suggested: '{suggested_suffix}'. "
+                f"File extensions must remain the same to preserve file type and compatibility."
+            )
+
+    def move(self, source: str, destination: str) -> str:
+        """Move a file or directory to a new location
+
+        Returns:
+            str: The actual final destination path where the file was moved
+        """
+        if not source:
+            raise ValueError("Source path cannot be empty")
+
+        if not destination:
+            raise ValueError("Destination path cannot be empty")
+
+        source_path = Path(source)
+        destination_path = Path(destination)
+
+        # Validate source exists
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source does not exist: {source_path}")
+
+        # Validate source permissions
+        if source_path.is_file() and not os.access(source_path, os.R_OK):
+            raise PermissionError(f"Source file is not readable: {source_path}")
+        elif source_path.is_dir() and not os.access(source_path, os.R_OK | os.X_OK):
+            raise PermissionError(f"Source directory is not accessible: {source_path}")
+
+        # Validate source directory permissions (needed only for move operation)
+        if not os.access(source_path.parent, os.W_OK):
+            raise PermissionError(
+                f"Source parent directory is not writable: {source_path.parent}"
+            )
+
+        # Validate destination directory permissions (will be created if needed)
+        dest_parent = destination_path.parent
+        while not dest_parent.exists() and dest_parent != dest_parent.parent:
+            dest_parent = dest_parent.parent
+        if dest_parent.exists() and not os.access(dest_parent, os.W_OK):
+            raise PermissionError(
+                f"Destination directory is not writable: {dest_parent}"
+            )
+
         try:
             # Create destination directory if it doesn't exist
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Handle naming conflicts
-            final_destination = self._handle_conflicts(destination)
+            final_destination = self._handle_conflicts(destination_path)
 
             # Calculate hash for verification (only for files)
             source_hash = None
             if (
-                source.is_file() and source.stat().st_size < 100 * 1024 * 1024
+                source_path.is_file() and source_path.stat().st_size < 100 * 1024 * 1024
             ):  # Only hash files < 100MB
-                source_hash = self._calculate_hash(source)
+                source_hash = self._calculate_hash(source_path)
 
             # Perform the move
-            if source.is_dir():
+            if source_path.is_dir():
                 # Move entire directory
-                shutil.move(str(source), str(final_destination))
+                shutil.move(str(source_path), str(final_destination))
             else:
                 # Move file
-                shutil.move(str(source), str(final_destination))
+                shutil.move(str(source_path), str(final_destination))
 
             # Verify move (for files)
             if source_hash and final_destination.is_file():
                 dest_hash = self._calculate_hash(final_destination)
                 if source_hash != dest_hash:
-                    raise Exception("File hash mismatch after move!")
+                    raise RuntimeError("File hash mismatch after move!")
 
-            # Log the move
-            self._log_move(source, final_destination, source_hash)
-
-            return True
+            return str(final_destination)
 
         except Exception as e:
-            raise Exception(f"Failed to move {source} to {destination}: {str(e)}")
+            raise RuntimeError(
+                f"Failed to move {source_path} to {destination_path}: {str(e)}"
+            )
 
     def _handle_conflicts(self, destination: Path) -> Path:
         """Add sequential numbers to files (person2.jpg, person3.jpg, etc.)"""
@@ -139,7 +244,6 @@ class FileMover:
                 counter += 1
         else:
             # For directories
-
             while True:
                 new_path = destination.parent / f"{destination.name}{counter}"
                 if not new_path.exists():
@@ -154,59 +258,71 @@ class FileMover:
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
 
-    def _log_move(self, source: Path, destination: Path, file_hash: str = None):
-        """Log the move operation"""
-        log_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "source": str(source),
-            "destination": str(destination),
-            "file_hash": file_hash,
-            "size": source.stat().st_size if source.exists() else None,
-        }
+    def copy(self, source: str, destination: str) -> str:
+        """Copy a file or directory to a new location, preserving the original
 
-        self.move_log.append(log_entry)
-        self._save_log()
+        Returns:
+            str: The actual final destination path where the file was copied
+        """
+        if not source:
+            raise ValueError("Source path cannot be empty")
 
-    def _load_log(self):
-        """Load existing move log"""
-        if self.log_file.exists():
-            try:
-                with open(self.log_file, "r") as f:
-                    data = json.load(f)
-                    self.move_log = data.get("moves", [])
-            except:
-                self.move_log = []
+        if not destination:
+            raise ValueError("Destination path cannot be empty")
 
-    def _save_log(self):
-        """Save move log to file"""
+        source_path = Path(source)
+        destination_path = Path(destination)
+
+        # Validate source exists
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source does not exist: {source_path}")
+
+        # Validate source permissions
+        if source_path.is_file() and not os.access(source_path, os.R_OK):
+            raise PermissionError(f"Source file is not readable: {source_path}")
+        elif source_path.is_dir() and not os.access(source_path, os.R_OK | os.X_OK):
+            raise PermissionError(f"Source directory is not accessible: {source_path}")
+
+        # Validate destination directory permissions (will be created if needed)
+        dest_parent = destination_path.parent
+        while not dest_parent.exists() and dest_parent != dest_parent.parent:
+            dest_parent = dest_parent.parent
+        if dest_parent.exists() and not os.access(dest_parent, os.W_OK):
+            raise PermissionError(
+                f"Destination directory is not writable: {dest_parent}"
+            )
+
         try:
-            log_data = {"version": "1.0", "moves": self.move_log}
+            # Create destination directory if it doesn't exist
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(self.log_file, "w") as f:
-                json.dump(log_data, f, indent=2)
+            # Handle naming conflicts
+            final_destination = self._handle_conflicts(destination_path)
+
+            # Calculate hash for verification (only for files)
+            source_hash = None
+            if (
+                source_path.is_file() and source_path.stat().st_size < 100 * 1024 * 1024
+            ):  # Only hash files < 100MB
+                source_hash = self._calculate_hash(source_path)
+
+            # Perform the copy
+            if source_path.is_dir():
+                # Copy entire directory tree
+                shutil.copytree(str(source_path), str(final_destination))
+            else:
+                # Copy file
+                shutil.copy2(str(source_path), str(final_destination))
+
+            # Verify copy (for files)
+            if source_hash and final_destination.is_file():
+                dest_hash = self._calculate_hash(final_destination)
+                if source_hash != dest_hash:
+                    raise RuntimeError("File hash mismatch after copy!")
+
+            return str(final_destination)
+
         except Exception as e:
-            print(f"Warning: Could not save log: {e}")
-
-    def get_recent_moves(self, count: int = 10) -> List[Dict]:
-        """Get recent move operations"""
-        return self.move_log[-count:] if self.move_log else []
-
-    def undo_last_move(self) -> bool:
-        """Undo the last move operation (if possible)"""
-        if not self.move_log:
-            return False
-
-        last_move = self.move_log[-1]
-        source = Path(last_move["source"])
-        destination = Path(last_move["destination"])
-
-        try:
-            if destination.exists() and not source.exists():
-                shutil.move(str(destination), str(source))
-                self.move_log.pop()
-                self._save_log()
-                return True
-        except Exception:
-            pass
-
-        return False
+            raise RuntimeError(
+                f"Failed to copy {source_path} to {destination_path}: {str(e)}"
+            )

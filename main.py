@@ -16,7 +16,7 @@ def main():
     scanner = FileScanner(unstructed_files_path)
     analyzer = FileAnalyzer()
     pathplanner = OpenAIPathPlanner()
-    mover = FileMover()
+    mover = FileMover(root_dir=str(organized_files_path), copy_mode=True)
 
     print("Scanning files...")
     files = scanner.scan()
@@ -29,18 +29,21 @@ def main():
 
         if new_path:
             try:
-                success = mover.organize_file(analysis, new_path)
-                if success:
-                    print(f"{file_info['name']} -> {new_path.name}")
+                final_destination = mover.organize_file(analysis, new_path)
+                if final_destination:
+                    final_name = Path(final_destination).name
+                    print(f"{file_info['name']} -> {final_name}")
                     moved_count += 1
                 else:
-                    print(f"Failed to move {file_info['name']}")
+                    print(f"Failed to organize {file_info['name']}")
             except Exception as e:
-                print(f"Error moving {file_info['name']}: {e}")
+                print(f"Error organizing {file_info['name']}: {e}")
         else:
             print(f"Skipped {file_info['name']} (already organized)")
 
-    print(f"Organization complete! Moved {moved_count}/{len(files)} files")
+    print(
+        f"Organization complete! Organized {moved_count}/{len(files)} files (originals preserved)"
+    )
 
 
 if __name__ == "__main__":

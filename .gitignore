@@ -29,8 +29,7 @@ MANIFEST
 
 # AI File Organizer Specific
 logs/
-test_files/
-unstructed_files/
+unorganized_files/
 organized_files/
 
 # AI Models & Cache
