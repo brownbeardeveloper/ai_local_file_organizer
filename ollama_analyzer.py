@@ -16,8 +16,8 @@ class OllamaAnalyzer(AIModel):
         ValueError: If the specified model name is not found among available Ollama models.
     """
 
-    def __init__(self, model_name: str = "qwen3:4b"):
-        """Initialize with default qwen3:4b model or specified model."""
+    def __init__(self, model_name: str = "qwen3:1.7b"):
+        """Initialize with default qwen3:1.7b model or specified model."""
         super().__init__(model_name)
 
     def _load_model(self):
