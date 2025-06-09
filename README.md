@@ -1,4 +1,4 @@
-# 🤖 AI File Organizer
+# 🤖 AI File Organizer Version 1.1
 
 **Stop wasting hours organizing files manually.** Let AI do it in seconds.
 
