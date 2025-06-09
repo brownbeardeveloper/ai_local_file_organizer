@@ -61,8 +61,6 @@ class OCRAnalyzer(AIModel):
         self.model = PaddleOCR(
             use_angle_cls=True,
             lang=self.language,
-            use_gpu=True,
-            show_log=False,
             enable_mkldnn=False,  # CPU optimization
             use_tensorrt=True,  # GPU optimization
         )
