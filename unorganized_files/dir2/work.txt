@@ -1,0 +1,23 @@
+# Work Notes – 2025-06-08
+
+## Tasks Completed
+- Fixed bug in login flow (missing token refresh)
+- Updated Dockerfile with multi-stage build
+- Reviewed pull request #112 (image classification refactor)
+
+## In Progress
+- Testing file categorization with YOLOv11n
+- Preparing demo for AI-powered file organizer
+
+## Blockers / Issues
+- Ollama occasionally crashes on large prompts
+- OCR misreads some scanned PDFs (try different DPI?)
+
+## Notes / Ideas
+- Try batching AI classification jobs every 30 min
+- Consider switching to Qwen3-30B-A3B for better speed/accuracy tradeoff
+
+# End of day summary
+- 6 pomodoros
+- Major tasks on track
+- Next: integrate summary suggestions from GPT-4.1-mini

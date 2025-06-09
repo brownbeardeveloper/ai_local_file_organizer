@@ -1,0 +1,26 @@
+# Personal Budget – June 2025
+
+# Income
+Salary: 30,000
+Side income: 2,500
+
+# Fixed Expenses
+Rent: 10,000
+Electricity & heating: 800
+Subscriptions (phone, streaming): 600
+
+# Variable Expenses
+Groceries: 4,000
+Transport: 1,200
+Dining out: 1,000
+Miscellaneous: 500
+
+# Savings & Debt
+Savings: 3,000
+Debt repayment: 2,000
+
+# Summary
+Total income:     32,500
+Total expenses:   20,100
+Total savings:     5,000
+Remaining balance: 7,400

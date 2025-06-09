@@ -27,11 +27,6 @@ MANIFEST
 .venv/
 .env
 
-# AI File Organizer Specific
-logs/
-unorganized_files/
-organized_files/
-
 # AI Models & Cache
 *.pth
 *.pkl
