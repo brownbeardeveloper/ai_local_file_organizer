@@ -186,7 +186,8 @@ CRITICAL RULES:
 - MUST preserve exact original file extension (.jpeg stays .jpeg, .JPG stays .JPG)
 - Generate new descriptive filenames based on AI insights - NEVER keep original names  
 - Simple names from primary object: "person.jpg", "building.jpg", "food.jpg"
-- For duplicates: person2.jpg, person3.jpg (NO underscores)
+- Use the same base filename for similar content (multiple resumes → "resume.pdf")
+- Do NOT add numbers to filenames - the system will handle duplicates automatically
 - Output valid JSON: {{"original_path": "new_path"}}
 - Relative paths only
 

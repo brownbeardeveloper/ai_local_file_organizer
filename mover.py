@@ -62,6 +62,52 @@ class FileMover:
 
         self._create_directory_structure()
 
+    def _get_final_destination(self, source_file_path: str, suggested_path: str) -> str:
+        """
+        Get the final destination path without actually moving the file.
+        This is used for preview/planning purposes.
+
+        Args:
+            source_file_path: Path to the source file
+            suggested_path: Suggested relative path for organization
+
+        Returns:
+            str: The final destination path where the file would be placed
+
+        Raises:
+            ValueError: If source or suggested path is invalid
+            FileNotFoundError: If source file doesn't exist
+            RuntimeError: If validation fails
+        """
+        if not source_file_path:
+            raise ValueError("Source file path cannot be empty")
+
+        if not suggested_path:
+            raise ValueError("Suggested path cannot be empty")
+
+        source_path = Path(source_file_path)
+        suggested_path_obj = Path(suggested_path)
+
+        # Validate source file exists
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file does not exist: {source_path}")
+
+        # Validate category
+        self._validate_category(suggested_path_obj)
+
+        # Validate file extension hasn't changed
+        self._validate_extension(source_path, suggested_path_obj)
+
+        # Convert suggested_path to be relative to root_dir
+        destination_path = self.root_dir / suggested_path_obj
+
+        # Create destination directory if it doesn't exist (for preview)
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # For preview purposes, return the path without conflict resolution
+        # Conflict resolution will be handled by the planning phase
+        return str(destination_path)
+
     def organize_file(self, source_file_path: str, suggested_path: str) -> str:
         """Copy or move file based on pathplanner recommendation
 
@@ -228,14 +274,14 @@ class FileMover:
         if not destination.exists():
             return destination
 
-        counter = 2
-
         # For files, add number before extension
         if destination.is_file() or "." in destination.name:
             stem = destination.stem
             suffix = destination.suffix
             parent = destination.parent
 
+            # Find the next available number by checking all existing files
+            counter = 2
             while True:
                 new_name = f"{stem}{counter}{suffix}"
                 new_path = parent / new_name
@@ -244,6 +290,7 @@ class FileMover:
                 counter += 1
         else:
             # For directories
+            counter = 2
             while True:
                 new_path = destination.parent / f"{destination.name}{counter}"
                 if not new_path.exists():

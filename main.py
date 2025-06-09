@@ -138,11 +138,12 @@ class FileOrganizer:
         self, analyses: List[Dict[str, Any]], path_suggestions: Dict[str, str]
     ) -> Dict[str, Any]:
         """Execute the file organization based on suggestions."""
-        print("Organizing files...")
+        print("Planning file organization...")
 
-        organized_count = 0
+        # Phase 1: Collect and validate all planned moves
+        planned_moves = []
         skipped_files = []
-        error_files = []
+        planned_destinations = set()  # Track planned destinations to avoid conflicts
 
         for analysis in analyses:
             original_path = analysis["path"]
@@ -152,16 +153,91 @@ class FileOrganizer:
                 skipped_files.append(
                     {"name": analysis["name"], "reason": "no path suggestion"}
                 )
-                print(f"Skipped {analysis['name']} (no path suggestion)")
                 continue
+
+            # Pre-validate the move to get the final destination path
+            try:
+                final_destination = self.mover._get_final_destination(
+                    original_path, suggested_path
+                )
+
+                # Handle conflicts with other planned moves
+                final_destination = self._resolve_planning_conflicts(
+                    final_destination, planned_destinations
+                )
+
+                planned_moves.append(
+                    {
+                        "analysis": analysis,
+                        "original_path": original_path,
+                        "final_destination": final_destination,
+                    }
+                )
+                planned_destinations.add(final_destination)
+            except Exception as e:
+                skipped_files.append(
+                    {"name": analysis["name"], "reason": f"path validation failed: {e}"}
+                )
+
+        # Phase 2: Show planned moves and get user confirmation
+        if not planned_moves:
+            print("No valid moves to execute.")
+            return {
+                "organized_count": 0,
+                "total_count": len(analyses),
+                "skipped_files": skipped_files,
+                "error_files": [],
+            }
+
+        print(f"\nPlanned file organization ({len(planned_moves)} files):")
+        print("=" * 80)
+        for move in planned_moves:
+            original_full_path = Path(move["original_path"]).resolve()
+            final_full_path = Path(move["final_destination"]).resolve()
+            print(f"{original_full_path}")
+            print(f"  -> {final_full_path}")
+            print()
+
+        # Get user confirmation
+        while True:
+            response = input("Proceed with file organization? (Y/N): ").strip().upper()
+            if response in ["Y", "YES"]:
+                break
+            elif response in ["N", "NO"]:
+                print("File organization cancelled by user.")
+                return {
+                    "organized_count": 0,
+                    "total_count": len(analyses),
+                    "skipped_files": skipped_files
+                    + [
+                        {
+                            "name": move["analysis"]["name"],
+                            "reason": "cancelled by user",
+                        }
+                        for move in planned_moves
+                    ],
+                    "error_files": [],
+                }
+            else:
+                print("Please enter Y (yes) or N (no)")
+
+        # Phase 3: Execute the approved moves
+        print("\nExecuting file organization...")
+        organized_count = 0
+        error_files = []
+
+        for move in planned_moves:
+            analysis = move["analysis"]
+            original_path = move["original_path"]
 
             try:
                 final_destination = self.mover.organize_file(
-                    original_path, suggested_path
+                    original_path, path_suggestions[original_path]
                 )
                 if final_destination:
-                    final_name = Path(final_destination).name
-                    print(f"{analysis['name']} -> {final_name}")
+                    final_full_path = Path(final_destination).resolve()
+                    original_full_path = Path(original_path).resolve()
+                    print(f"{original_full_path} -> {final_full_path}")
                     organized_count += 1
                 else:
                     error_files.append(
@@ -178,6 +254,64 @@ class FileOrganizer:
             "skipped_files": skipped_files,
             "error_files": error_files,
         }
+
+    def _resolve_planning_conflicts(
+        self, destination_path: str, planned_destinations: set
+    ) -> str:
+        """
+        Resolve conflicts between planned moves by adding sequential numbers.
+        Checks both existing files and other planned destinations.
+
+        Args:
+            destination_path: The initially planned destination path
+            planned_destinations: Set of already planned destination paths
+
+        Returns:
+            str: A unique destination path that doesn't conflict with existing files or planned moves
+        """
+        path_obj = Path(destination_path)
+
+        # If no conflict with planned destinations and file doesn't exist, use as-is
+        if destination_path not in planned_destinations and not path_obj.exists():
+            return destination_path
+
+        # Extract path components for sequential numbering
+        stem = path_obj.stem
+        suffix = path_obj.suffix
+        parent = path_obj.parent
+
+        # Find ALL existing files with this stem pattern
+        existing_numbers = set()
+        if parent.exists():
+            for existing_file in parent.glob(f"{stem}*{suffix}"):
+                name = existing_file.stem
+                if name == stem:
+                    existing_numbers.add(1)  # Base file counts as 1
+                elif name.startswith(stem) and name[len(stem) :].isdigit():
+                    number = int(name[len(stem) :])
+                    existing_numbers.add(number)
+
+        # Find ALL planned files with this stem pattern
+        for planned_path in planned_destinations:
+            planned_obj = Path(planned_path)
+            if planned_obj.parent == parent and planned_obj.suffix == suffix:
+                planned_name = planned_obj.stem
+                if planned_name == stem:
+                    existing_numbers.add(1)  # Base file counts as 1
+                elif (
+                    planned_name.startswith(stem)
+                    and planned_name[len(stem) :].isdigit()
+                ):
+                    number = int(planned_name[len(stem) :])
+                    existing_numbers.add(number)
+
+        # Find the next available sequential number
+        counter = 2
+        while counter in existing_numbers:
+            counter += 1
+
+        new_name = f"{stem}{counter}{suffix}"
+        return str(parent / new_name)
 
 
 def create_organizer(
