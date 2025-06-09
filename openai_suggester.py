@@ -54,8 +54,12 @@ class OpenAIPathPlanner:
         results = {}
 
         for category, files in categorized_files.items():
-            category_results = self._process_category(category, files)
-            results.update(category_results)
+            try:
+                category_results = self._process_category(category, files)
+                results.update(category_results)
+            except Exception as e:
+                print(f"ERROR in category '{category}': {e}")
+                # Continue with other categories instead of failing completely
 
         return results
 
@@ -134,17 +138,26 @@ class OpenAIPathPlanner:
         """
         prompt = self._build_category_prompt(category, files)
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self._get_system_instructions(category)},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2,
-            max_tokens=4000,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": self._get_system_instructions(category),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=4000,
+            )
 
-        return self._parse_response(response.choices[0].message.content)
+            raw_response = response.choices[0].message.content
+            parsed_result = self._parse_response(raw_response)
+            return parsed_result
+
+        except Exception as e:
+            raise RuntimeError(f"OpenAI API call failed for category '{category}': {e}")
 
     def _build_category_prompt(self, category: str, files: List[Dict]) -> str:
         """Build prompt for a specific category of files.
@@ -172,33 +185,44 @@ class OpenAIPathPlanner:
 
             file_data.append(data)
 
-        return f"""Below is a list of {category} files with AI-generated metadata. 
-Your task is to suggest well-structured, logical destination paths.
+        return f"""You are sorting {category} files into logical and organized folders based on AI-generated metadata.
 
-{self._get_directory_structure_info()}
+        TASK:
+        - Suggest precise, logical file paths using the given directory rules.
+        - Output must be VALID JSON only, formatted as {{"original_path": "new_path"}}.
 
-{self._get_category_rules(category)}
+        DIRECTORY STRUCTURE RULES:
+        {self._get_directory_structure_info()}
 
-CRITICAL RULES:
-- MUST use structure: main_category/sub_category/YYYY/filename.ext
-- Valid categories: {", ".join(self.sub_dirs_map.keys())}
-- Use year from 'modified' date as subfolder
-- MUST preserve exact original file extension (.jpeg stays .jpeg, .JPG stays .JPG)
-- Generate new descriptive filenames based on AI insights - NEVER keep original names  
-- Simple names from primary object: "person.jpg", "building.jpg", "food.jpg"
-- Use the same base filename for similar content (multiple resumes → "resume.pdf")
-- Do NOT add numbers to filenames - the system will handle duplicates automatically
-- Output valid JSON: {{"original_path": "new_path"}}
-- Relative paths only
+        CATEGORY-SPECIFIC RULES:
+        {self._get_category_rules(category)}
 
-File list:
-{json.dumps(file_data, indent=2)}"""
+        CRITICAL REQUIREMENTS:
+        1. Folder structure MUST follow: main_category/sub_category/YYYY/filename.ext
+        2. Allowed main categories: {", ".join(self.sub_dirs_map.keys())}
+        3. The 'YYYY' folder is the YEAR from the file's 'modified' date.
+        4. Preserve EXACT original file extension (.jpeg remains .jpeg, .JPG remains .JPG).
+        5. Generate NEW descriptive filenames based solely on AI insights (NEVER use original names).
+        - Examples: "person.jpg", "building.jpg", "food.jpg".
+        6. Similar files share the same base filename (multiple resumes → "resume.pdf").
+        7. NEVER add numbers or identifiers; duplicates are handled automatically.
+        8. Paths must be RELATIVE, no absolute paths allowed.
+
+        SPECIAL RULES FOR FINANCIAL FILES:
+        - 'budget' files → finance/invoices/YYYY/budget.txt
+        - 'invoice' files → finance/invoices/YYYY/invoice.pdf
+        - 'insurance' files → finance/invoices/YYYY/insurance.pdf
+        - All financial documents use 'finance/' instead of 'documents/'.
+
+        FILES TO ORGANIZE:
+        {json.dumps(file_data, indent=2)}"""
 
     def _get_category_rules(self, category: str) -> str:
         """Get category-specific organization rules."""
         category_rules = {
             "image": "photos/[camera|phone|screenshots]/YYYY/ → person.jpg, building.jpg, food.jpg",
-            "document": "documents/[pdf|word|excel]/YYYY/ → report.pdf, invoice.pdf, letter.docx",
+            "document": "documents/[pdf|word|excel]/YYYY/ → report.pdf, invoice.pdf, letter.docx\n"
+            + "finance/[invoices|receipts]/YYYY/ → budget.txt, expense.pdf, receipt.jpg (for budget/financial content)",
             "video": "work/projects/YYYY/ OR misc/YYYY/ → presentation.mp4, family.mp4",
             "audio": "work/projects/YYYY/ OR misc/YYYY/ → recording.mp3, music.mp3",
             "archive": "archives/[zip|rar]/YYYY/ → backup.zip, project.rar",
@@ -217,10 +241,20 @@ File list:
         return "\n".join(lines)
 
     def _get_system_instructions(self, category: str) -> str:
-        """Get system instructions tailored for the category."""
-        return f"""Professional file system architect for {category} files.
-Create logical, maintainable folder structures using AI insights for intelligent categorization.
-Follow directory structure exactly, generate descriptive filenames, ensure scalability."""
+        """Provide clear, structured instructions for file categorization."""
+        return f"""You are a professional organizer specialized in {category} files.
+
+        TASK:
+        - Create a logical and clear folder structure.
+        - Use concise, descriptive folder and file names.
+        - Sort files neatly based on their content.
+
+        REQUIREMENTS:
+        - Keep the structure simple and easy to maintain.
+        - Make sure it can easily grow with more files in the future.
+        - Clearly separate different file types or topics.
+
+        Follow these instructions exactly."""
 
     def _parse_response(self, raw: str) -> Dict[str, str]:
         """Parse OpenAI response into path mapping.
@@ -234,4 +268,26 @@ Follow directory structure exactly, generate descriptive filenames, ensure scala
         elif content.startswith("```"):
             content = content[3:-3]
 
-        return json.loads(content)
+        try:
+            parsed_json = json.loads(content)
+
+            # Handle both array format and object format
+            if isinstance(parsed_json, list):
+                # Convert array format to dictionary mapping
+                result = {}
+                for item in parsed_json:
+                    if (
+                        isinstance(item, dict)
+                        and "original_path" in item
+                        and "new_path" in item
+                    ):
+                        result[item["original_path"]] = item["new_path"]
+                return result
+            elif isinstance(parsed_json, dict):
+                # Already in the expected format
+                return parsed_json
+            else:
+                raise ValueError(f"Unexpected JSON format: {type(parsed_json)}")
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON response: {e}")

@@ -51,72 +51,71 @@ class OllamaAnalyzer(AIModel):
 
         try:
             if analysis_type == "document":
-                prompt = f"""You are an expert document classifier. Read the content and understand what type of document this is:
+                prompt = f"""You are classifying documents based ONLY on their main content. 
 
-            {text_content[:800]}
+                Document Content:
+                {text_content[:800]}
 
-            CLASSIFICATION LOGIC:
-            1. MANUAL - If it explains how to do something, contains instructions, tutorials, or guides
-            2. REPORT - If it analyzes data, presents findings, or business analysis
-            3. RESUME - If it lists someone's work experience, education, and skills for job applications
-            4. ARTICLE - If it's informational content, blog posts, or educational material
-            5. CERTIFICATE - If it's an official document proving completion or achievement  
-            6. INSURANCE - If it contains policy terms, coverage details, or insurance conditions
-            7. INVOICE - If it contains billing information, payment details, or financial transactions
-            8. EMAIL - If it's correspondence or communication
-            9. NOTES - If it's personal thoughts, reminders, or informal documentation
-            10. OTHER - If it doesn't fit the above categories
+                Classification Instructions:
 
-            FOCUS ON THE MAIN PURPOSE AND CONTENT:
-            - What is this document trying to accomplish?
-            - Is it teaching, proving, billing, communicating, or documenting?
-            - Look at the structure and language used
+                Pick exactly ONE category from this list, based on what the document clearly shows or mentions:
 
-            Categories: manual, report, resume, article, certificate, insurance, invoice, email, notes, other
+                1. BUDGET - mentions personal money, income, expenses, savings, financial plans.
+                2. INVOICE - shows billing, payments, transactions, business charges.
+                3. MANUAL - gives instructions, how-to guides, tutorials.
+                4. REPORT - contains analysis, data findings, business review (NOT personal finance).
+                5. RESUME - includes job history, skills, education.
+                6. ARTICLE - informative, educational, or blog content.
+                7. CERTIFICATE - proves completion or achievement officially.
+                8. INSURANCE - discusses policies, coverage, or insurance terms.
+                9. EMAIL - written messages or correspondence.
+                10. NOTES - informal, personal reminders or thoughts.
+                11. OTHER - does NOT clearly match any category above.
 
-            Answer with ONLY the category:"""
+                Answer ONLY with the exact category name:"""
 
             elif analysis_type == "csv":
-                prompt = f"""You are a librarian organizing data files to help people find them easily on their computer.
+                prompt = f"""You are classifying CSV data files based ONLY on the type of data shown.
 
-            Look at this CSV data:
-            {text_content[:400]}
+                CSV Data:
+                {text_content[:400]}
 
-            What kind of data is this? Think like a librarian - what label would help someone find this file when they need it?
+                Classification Instructions:
 
-            Common data types:
-            - financial-transactions (money, payments, purchases, deposits, bank records)
-            - customer-contacts (names, emails, phone numbers, addresses)
-            - inventory-catalog (products, items, stock, SKU numbers)
-            - employee-data (staff information, HR records, payroll)
-            - website-analytics (page views, clicks, user behavior)
-            - sales-data (deals, revenue, customer purchases)
-            - sensor-data (measurements, readings, IoT data)
-            - survey-responses (questionnaire answers, feedback)
-            - user-activity (login logs, app usage, activity records)
+                Pick exactly ONE category that clearly matches the data:
 
-            Answer with the data type:"""
+                1. financial-transactions - records money, payments, bank transactions.
+                2. customer-contacts - includes names, emails, phone numbers, addresses.
+                3. inventory-catalog - lists products, items, stock, or SKUs.
+                4. employee-data - contains staff info, payroll, HR records.
+                5. website-analytics - tracks page views, clicks, user actions.
+                6. sales-data - sales, deals, customer purchases, revenues.
+                7. sensor-data - IoT measurements, sensor readings.
+                8. survey-responses - questionnaire results, feedback.
+                9. user-activity - logins, application usage, activity records.
+
+                Answer ONLY with the exact data type:"""
 
             elif analysis_type == "script":
-                prompt = f"""You are a librarian organizing script files to help people find them easily on their computer.
+                prompt = f"""You are classifying script files based ONLY on their main commands and purpose.
 
-            Look at this script and focus on the KEY COMMANDS:
-            {text_content[:400]}
+                Script Commands and Content:
+                {text_content[:400]}
 
-            What is the MAIN PURPOSE? Look for these specific indicators:
+                Classification Instructions:
 
-            NETWORK-MONITORING if you see: ping, curl, wget, netstat, nmap, ssh, nc (netcat), telnet - testing connectivity or checking if servers/websites are up/down
-            BACKUP-AUTOMATION if you see: tar, zip, rsync, cp, mv for saving/archiving files  
-            LOG-ANALYSIS if you see: grep, awk, sed, tail, head for reading/parsing logs
-            WEB-SCRAPER if you see: curl, wget, requests downloading from URLs/websites
-            DATA-PROCESSING if you see: sort, uniq, cut, calculations, file transformations
-            SYSTEM-ADMIN if you see: useradd, chmod, systemctl, service management
-            DEPLOYMENT-SCRIPT if you see: docker, kubectl, npm install, app deployment
-            FILE-MANAGEMENT if you see: find, rm, mkdir, organizing directories
+                Pick exactly ONE category based on the main commands and actions:
 
-            Look at the COMMANDS and COMMENTS - what is this script actually doing?
+                1. NETWORK-MONITORING - ping, curl, wget, netstat, nmap, ssh, connectivity checks.
+                2. BACKUP-AUTOMATION - tar, zip, rsync, copying or archiving files.
+                3. LOG-ANALYSIS - grep, awk, sed, tail, head, parsing logs.
+                4. WEB-SCRAPER - curl, wget, requests, downloading data from websites.
+                5. DATA-PROCESSING - sort, uniq, cut, data transformations or calculations.
+                6. SYSTEM-ADMIN - useradd, chmod, systemctl, managing system services.
+                7. DEPLOYMENT-SCRIPT - docker, kubectl, npm install, deploying apps.
+                8. FILE-MANAGEMENT - find, rm, mkdir, organizing files or directories.
 
-            Answer with just the purpose:"""
+                Answer ONLY with the exact purpose:"""
 
             else:
                 prompt = f"Analyze this content: {text_content[:500]}..."
@@ -146,6 +145,7 @@ class OllamaAnalyzer(AIModel):
         # Look for known answer patterns
         valid_answers = {
             # Document types
+            "budget",
             "resume",
             "report",
             "invoice",
